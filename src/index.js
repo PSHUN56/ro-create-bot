@@ -17,7 +17,6 @@ const {
   TextInputStyle
 } = require("discord.js");
 const { withState, ensureUser, loadState } = require("./storage");
-const { getTaskForDate } = require("./tasks");
 const { setupServer, cleanupManagedArtifacts, hasTaskReviewerRole, hasAdReviewerRole } = require("./setupServer");
 const { ROLE_NAMES, managedTemplates } = require("./config/serverTemplate");
 
@@ -37,72 +36,73 @@ const client = new Client({
 const commands = [
   new SlashCommandBuilder()
     .setName("setup-server")
-    .setDescription("Настроить роли, доступ и служебные каналы Ro Create"),
+    .setDescription("Configure Ro Create roles, access, and service channels"),
   new SlashCommandBuilder()
     .setName("cleanup-bot")
-    .setDescription("Удалить старые каналы и категории, которые раньше создавал бот"),
+    .setDescription("Remove old channels and categories previously created by the bot"),
   new SlashCommandBuilder()
     .setName("balance")
-    .setDescription("Показать баланс монет"),
+    .setDescription("Show coin balance"),
   new SlashCommandBuilder()
     .setName("profile")
-    .setDescription("Показать профиль разработчика"),
+    .setDescription("Show developer profile"),
   new SlashCommandBuilder()
     .setName("daily")
-    .setDescription("Получить ежедневный бонус"),
+    .setDescription("Claim daily reward"),
   new SlashCommandBuilder()
     .setName("work")
-    .setDescription("Подработать и заработать монеты"),
+    .setDescription("Work and earn coins"),
   new SlashCommandBuilder()
     .setName("tasks")
-    .setDescription("Посмотреть сегодняшнее ежедневное задание"),
+    .setDescription("Show the current task"),
   new SlashCommandBuilder()
-    .setName("submit-task")
-    .setDescription("Отправить ежедневное задание на проверку")
-    .addAttachmentOption((option) =>
-      option.setName("медиа").setDescription("Скриншот или видео выполненного задания").setRequired(true)
+    .setName("publish-task")
+    .setDescription("Publish the current task in the tasks channel")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
+    .addStringOption((option) =>
+      option.setName("title").setDescription("Short task title").setRequired(true).setMaxLength(90)
     )
     .addStringOption((option) =>
-      option.setName("комментарий").setDescription("Что именно ты сделал и что проверить").setRequired(true).setMaxLength(600)
+      option.setName("description").setDescription("What needs to be done").setRequired(true).setMaxLength(1200)
     )
-    .addAttachmentOption((option) =>
-      option.setName("медиа2").setDescription("Дополнительный файл, если нужен").setRequired(false)
+    .addIntegerOption((option) =>
+      option.setName("reward").setDescription("How many coins to award").setRequired(true).setMinValue(1)
     ),
   new SlashCommandBuilder()
     .setName("post-ad")
-    .setDescription("Отправить объявление на публикацию за монеты")
+    .setDescription("Submit an ad for moderation")
     .addStringOption((option) =>
-      option.setName("название").setDescription("Название объявления").setRequired(true).setMaxLength(80)
+      option.setName("title").setDescription("Ad title").setRequired(true).setMaxLength(80)
     )
     .addStringOption((option) =>
       option
-        .setName("категория")
-        .setDescription("Категория объявления")
+        .setName("category")
+        .setDescription("Ad category")
         .setRequired(true)
         .addChoices(
-          { name: "Скриптер", value: "Скриптер" },
-          { name: "Билдер", value: "Билдер" },
+          { name: "Scripter", value: "Scripter" },
+          { name: "Builder", value: "Builder" },
           { name: "UI/UX", value: "UI/UX" },
-          { name: "3D-моделлер", value: "3D-моделлер" },
-          { name: "Аниматор", value: "Аниматор" },
-          { name: "Поиск команды", value: "Поиск команды" }
+          { name: "3D Modeler", value: "3D Modeler" },
+          { name: "Animator", value: "Animator" },
+          { name: "Team Search", value: "Team Search" }
         )
     )
     .addStringOption((option) =>
-      option.setName("описание").setDescription("Описание объявления").setRequired(true).setMaxLength(1000)
+      option.setName("description").setDescription("Ad description").setRequired(true).setMaxLength(1000)
     )
     .addStringOption((option) =>
-      option.setName("оплата").setDescription("Например: 5 000 Robux / договорная").setRequired(true)
+      option.setName("payment").setDescription("Example: 5 000 Robux / negotiable").setRequired(true)
     )
     .addAttachmentOption((option) =>
-      option.setName("фото").setDescription("Превью или картинка к объявлению").setRequired(false)
+      option.setName("image").setDescription("Preview image").setRequired(false)
     ),
   new SlashCommandBuilder()
     .setName("add-coins")
-    .setDescription("Выдать монеты участнику вручную")
+    .setDescription("Add coins to a member manually")
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .addUserOption((option) => option.setName("пользователь").setDescription("Кому выдать").setRequired(true))
-    .addIntegerOption((option) => option.setName("монеты").setDescription("Количество").setRequired(true))
+    .addUserOption((option) => option.setName("user").setDescription("Who receives the coins").setRequired(true))
+    .addIntegerOption((option) => option.setName("amount").setDescription("How many coins").setRequired(true))
 ].map((command) => command.toJSON());
 
 async function registerCommands() {
@@ -185,51 +185,65 @@ function createTaskThreadRow(threadId) {
 
 function buildTaskEmbed(task, dateKey) {
   return new EmbedBuilder()
-    .setTitle(`Ежедневное задание: ${task.title}`)
+    .setTitle(`\u0415\u0436\u0435\u0434\u043d\u0435\u0432\u043d\u043e\u0435 \u0437\u0430\u0434\u0430\u043d\u0438\u0435: ${task.title}`)
     .setColor(0x22c55e)
     .setDescription(task.description)
-    .addFields({ name: "Награда", value: `${task.reward} монет`, inline: true })
+    .addFields({ name: "\u041d\u0430\u0433\u0440\u0430\u0434\u0430", value: `${task.reward} \u043c\u043e\u043d\u0435\u0442`, inline: true })
     .setFooter({ text: `Daily Task ${dateKey}` });
 }
 
-async function ensureDailyTaskPost(guild) {
+function buildPublishedTaskEmbed(task) {
+  return new EmbedBuilder()
+    .setTitle(`\u0417\u0430\u0434\u0430\u043d\u0438\u0435: ${task.title}`)
+    .setColor(0x22c55e)
+    .setDescription(task.description)
+    .addFields({ name: "\u041d\u0430\u0433\u0440\u0430\u0434\u0430", value: `${task.reward} \u043c\u043e\u043d\u0435\u0442`, inline: true })
+    .setFooter({ text: `Task ${task.id}` });
+}
+
+function detectAttachmentKind(attachment) {
+  const contentType = (attachment.contentType || "").toLowerCase();
+  const url = (attachment.url || "").toLowerCase();
+
+  if (contentType.startsWith("image/") || /\.(png|jpe?g|gif|webp)$/i.test(url)) {
+    return "image";
+  }
+
+  if (contentType.startsWith("video/") || /\.(mp4|mov|webm|avi|mkv)$/i.test(url)) {
+    return "video";
+  }
+
+  return "other";
+}
+
+async function publishCurrentTask(guild, task) {
   const channel = await findManagedChannel(guild, "tasks");
   if (!channel) {
-    return;
+    return null;
   }
 
-  const task = getTaskForDate();
-  const dateKey = new Date().toISOString().slice(0, 10);
-  const recent = await channel.messages.fetch({ limit: 20 }).catch(() => null);
-  const alreadyPosted = recent?.some(
-    (message) =>
-      message.author.id === guild.members.me.id
-      && message.embeds[0]?.footer?.text === `Daily Task ${dateKey}`
-  );
+  const embed = buildPublishedTaskEmbed(task);
+  const state = loadState();
+  const existingChannelId = state.currentTask?.channelId;
+  const existingMessageId = state.currentTask?.messageId;
 
-  if (alreadyPosted) {
-    return;
+  let message = null;
+  if (existingChannelId === channel.id && existingMessageId) {
+    message = await channel.messages.fetch(existingMessageId).catch(() => null);
   }
 
-  await channel.send({
-    content: "Новое ежедневное задание уже здесь.",
-    embeds: [buildTaskEmbed(task, dateKey)]
-  }).catch(() => null);
-}
-
-function submissionMediaFields(submission) {
-  const lines = [submission.mediaUrl];
-  if (submission.mediaUrl2) {
-    lines.push(submission.mediaUrl2);
+  if (message) {
+    await message.edit({
+      content: "\u0410\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e\u0435 \u0437\u0430\u0434\u0430\u043d\u0438\u0435 \u0434\u043b\u044f \u0441\u0435\u0440\u0432\u0435\u0440\u0430:",
+      embeds: [embed]
+    });
+    return message;
   }
-  return lines.join("\n");
-}
 
-function applyPreview(embed, attachment) {
-  if (attachment?.contentType?.startsWith("image/")) {
-    embed.setImage(attachment.url);
-  }
-  return embed;
+  return channel.send({
+    content: "\u0410\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e\u0435 \u0437\u0430\u0434\u0430\u043d\u0438\u0435 \u0434\u043b\u044f \u0441\u0435\u0440\u0432\u0435\u0440\u0430:",
+    embeds: [embed]
+  });
 }
 
 async function updateStoredReviewMessage(guild, submission, embed) {
@@ -252,21 +266,6 @@ async function updateStoredReviewMessage(guild, submission, embed) {
 
 client.once("clientReady", async () => {
   await registerCommands();
-  const guild = await client.guilds.fetch(guildId).catch(() => null);
-  if (guild) {
-    const fullGuild = await guild.fetch();
-    await ensureDailyTaskPost(fullGuild);
-  }
-
-  setInterval(async () => {
-    const currentGuild = await client.guilds.fetch(guildId).catch(() => null);
-    if (!currentGuild) {
-      return;
-    }
-
-    await ensureDailyTaskPost(await currentGuild.fetch()).catch(() => null);
-  }, 30 * 60 * 1000);
-
   console.log(`Ro Create bot online as ${client.user.tag}`);
 });
 
@@ -290,7 +289,6 @@ client.on("interactionCreate", async (interaction) => {
 
         await interaction.deferReply({ flags: 64 });
         const result = await setupServer(guild, interaction.member);
-        await ensureDailyTaskPost(guild).catch(() => null);
 
         return interaction.editReply({
           content: `Ro Create настроен.\n${result.instructions.join("\n")}`
@@ -401,88 +399,65 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (interaction.commandName === "tasks") {
-        const task = getTaskForDate();
-        return interaction.reply({
-          embeds: [buildTaskEmbed(task, new Date().toISOString().slice(0, 10))],
-          flags: 64
-        });
-      }
-
-      if (interaction.commandName === "submit-task") {
-        const task = getTaskForDate();
-        const media = interaction.options.getAttachment("медиа", true);
-        const media2 = interaction.options.getAttachment("медиа2", false);
-        const comment = interaction.options.getString("комментарий", true);
-        const reviewChannel = await findManagedChannel(guild, "taskReview");
-
-        if (!reviewChannel) {
+        const task = loadState().currentTask;
+        if (!task) {
           return interaction.reply({
-            content: "Канал проверки заданий не найден. Сначала выполни `/setup-server`.",
+            content: "\u0421\u0435\u0439\u0447\u0430\u0441 \u043d\u0435\u0442 \u043e\u043f\u0443\u0431\u043b\u0438\u043a\u043e\u0432\u0430\u043d\u043d\u043e\u0433\u043e \u0437\u0430\u0434\u0430\u043d\u0438\u044f. \u041f\u0443\u0441\u0442\u044c \u0430\u0434\u043c\u0438\u043d \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u0442 \u0435\u0433\u043e \u0447\u0435\u0440\u0435\u0437 /publish-task.",
             flags: 64
           });
         }
 
-        const submission = withState((state) => {
-          ensureUser(state, guild.id, interaction.user);
-          const id = String(state.counters.taskSubmission++);
-          const record = {
-            id,
-            guildId: guild.id,
-            userId: interaction.user.id,
-            username: interaction.user.username,
-            taskId: task.id,
-            taskTitle: task.title,
-            reward: task.reward,
-            comment,
-            mediaUrl: media.url,
-            mediaUrl2: media2?.url || null,
-            mediaContentType: media.contentType || null,
-            status: "pending",
-            createdAt: new Date().toISOString()
-          };
-
-          state.taskSubmissions[id] = record;
-          return record;
+        return interaction.reply({
+          embeds: [buildPublishedTaskEmbed(task)],
+          flags: 64
         });
+      }
 
-        const embed = new EmbedBuilder()
-          .setTitle(`Проверка задания #${submission.id}`)
-          .setColor(0xf59e0b)
-          .setDescription(comment)
-          .addFields(
-            { name: "Участник", value: `<@${interaction.user.id}>`, inline: true },
-            { name: "Задание", value: submission.taskTitle, inline: true },
-            { name: "Награда", value: `${submission.reward} монет`, inline: true },
-            { name: "Медиа", value: submissionMediaFields(submission) }
-          )
-          .setFooter({ text: `ID заявки: ${submission.id}` });
+      if (interaction.commandName === "publish-task") {
+        if (!member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+          return interaction.reply({
+            content: "\u0414\u043b\u044f \u044d\u0442\u043e\u0439 \u043a\u043e\u043c\u0430\u043d\u0434\u044b \u043d\u0443\u0436\u043d\u043e \u043f\u0440\u0430\u0432\u043e `\u0423\u043f\u0440\u0430\u0432\u043b\u044f\u0442\u044c \u0441\u0435\u0440\u0432\u0435\u0440\u043e\u043c`.",
+            flags: 64
+          });
+        }
 
-        applyPreview(embed, media);
+        const task = {
+          id: String(Date.now()),
+          title: interaction.options.getString("title", true),
+          description: interaction.options.getString("description", true),
+          reward: interaction.options.getInteger("reward", true),
+          publishedAt: new Date().toISOString(),
+          publishedBy: interaction.user.id
+        };
 
-        const reviewMessage = await reviewChannel.send({
-          embeds: [embed],
-          components: [createTaskReviewRow(submission.id)]
-        });
+        const message = await publishCurrentTask(guild, task);
+        if (!message) {
+          return interaction.reply({
+            content: "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u043d\u0430\u0439\u0442\u0438 \u043a\u0430\u043d\u0430\u043b \u0441 \u0437\u0430\u0434\u0430\u043d\u0438\u044f\u043c\u0438. \u0421\u043d\u0430\u0447\u0430\u043b\u0430 \u0432\u044b\u043f\u043e\u043b\u043d\u0438 /setup-server.",
+            flags: 64
+          });
+        }
 
         withState((state) => {
-          if (state.taskSubmissions[submission.id]) {
-            state.taskSubmissions[submission.id].reviewChannelId = reviewMessage.channelId;
-            state.taskSubmissions[submission.id].reviewMessageId = reviewMessage.id;
-          }
+          state.currentTask = {
+            ...task,
+            channelId: message.channelId,
+            messageId: message.id
+          };
         });
 
         return interaction.reply({
-          content: `Заявка отправлена на проверку. Если ее примут, ты получишь ${submission.reward} монет.`,
+          content: `\u0417\u0430\u0434\u0430\u043d\u0438\u0435 \u043e\u043f\u0443\u0431\u043b\u0438\u043a\u043e\u0432\u0430\u043d\u043e. \u041d\u0430\u0433\u0440\u0430\u0434\u0430: ${task.reward} \u043c\u043e\u043d\u0435\u0442.`,
           flags: 64
         });
       }
 
       if (interaction.commandName === "post-ad") {
-        const title = interaction.options.getString("название", true);
-        const category = interaction.options.getString("категория", true);
-        const description = interaction.options.getString("описание", true);
-        const payment = interaction.options.getString("оплата", true);
-        const image = interaction.options.getAttachment("фото", false);
+        const title = interaction.options.getString("title", true);
+        const category = interaction.options.getString("category", true);
+        const description = interaction.options.getString("description", true);
+        const payment = interaction.options.getString("payment", true);
+        const image = interaction.options.getAttachment("image", false);
         const reviewChannel = await findManagedChannel(guild, "adReview");
 
         if (!reviewChannel) {
@@ -561,8 +536,8 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (interaction.commandName === "add-coins") {
-        const target = interaction.options.getUser("пользователь", true);
-        const amount = interaction.options.getInteger("монеты", true);
+        const target = interaction.options.getUser("user", true);
+        const amount = interaction.options.getInteger("amount", true);
 
         const userState = withState((state) => {
           const targetState = ensureUser(state, guild.id, target);
@@ -654,9 +629,12 @@ client.on("interactionCreate", async (interaction) => {
           }
         }
 
-        if (attachments.length === 0) {
+        const imageAttachment = attachments.find((attachment) => detectAttachmentKind(attachment) === "image");
+        const videoAttachment = attachments.find((attachment) => detectAttachmentKind(attachment) === "video");
+
+        if (!imageAttachment || !videoAttachment) {
           return interaction.reply({
-            content: "Сначала прикрепи в эту ветку хотя бы один скриншот или видео, потом нажми кнопку снова.",
+            content: "\u0414\u043b\u044f \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u043d\u0443\u0436\u043d\u043e \u043f\u0440\u0438\u043a\u0440\u0435\u043f\u0438\u0442\u044c \u0438 \u0444\u043e\u0442\u043e, \u0438 \u0432\u0438\u0434\u0435\u043e. \u041f\u043e\u0441\u043b\u0435 \u044d\u0442\u043e\u0433\u043e \u043d\u0430\u0436\u043c\u0438 \u043a\u043d\u043e\u043f\u043a\u0443 \u0435\u0449\u0435 \u0440\u0430\u0437.",
             flags: 64
           });
         }
@@ -685,9 +663,9 @@ client.on("interactionCreate", async (interaction) => {
             taskTitle: currentDraft.taskTitle,
             reward: currentDraft.reward,
             comment: currentDraft.comment,
-            mediaUrl: attachments[0]?.url || null,
-            mediaUrl2: attachments[1]?.url || null,
-            mediaContentType: attachments[0]?.contentType || null,
+            mediaUrl: imageAttachment.url,
+            mediaUrl2: videoAttachment.url,
+            mediaContentType: imageAttachment.contentType || null,
             threadId: submissionId,
             status: "pending",
             createdAt: new Date().toISOString()
@@ -896,8 +874,15 @@ client.on("interactionCreate", async (interaction) => {
 
       if (interaction.customId === "task-start-modal") {
         const comment = interaction.fields.getTextInputValue("comment");
-        const task = getTaskForDate();
+        const task = loadState().currentTask;
         const taskSubmitChannel = await findManagedChannel(interaction.guild, "taskSubmit");
+
+        if (!task) {
+          return interaction.reply({
+            content: "\u0421\u0435\u0439\u0447\u0430\u0441 \u043d\u0435\u0442 \u0430\u043a\u0442\u0443\u0430\u043b\u044c\u043d\u043e\u0433\u043e \u0437\u0430\u0434\u0430\u043d\u0438\u044f. \u041f\u0443\u0441\u0442\u044c \u0430\u0434\u043c\u0438\u043d \u0441\u043d\u0430\u0447\u0430\u043b\u0430 \u043e\u043f\u0443\u0431\u043b\u0438\u043a\u0443\u0435\u0442 \u0435\u0433\u043e \u0447\u0435\u0440\u0435\u0437 /publish-task.",
+            flags: 64
+          });
+        }
 
         if (!taskSubmitChannel) {
           return interaction.reply({
@@ -933,10 +918,10 @@ client.on("interactionCreate", async (interaction) => {
 
         await thread.send({
           content: [
-            `Задание: **${task.title}**`,
-            `Награда: **${task.reward} монет**`,
+            `\u0417\u0430\u0434\u0430\u043d\u0438\u0435: **${task.title}**`,
+            `\u041d\u0430\u0433\u0440\u0430\u0434\u0430: **${task.reward} \u043c\u043e\u043d\u0435\u0442**`,
             "",
-            "Теперь прикрепи сюда скриншот или видео одним или несколькими сообщениями, а потом нажми кнопку ниже."
+            "\u0422\u0435\u043f\u0435\u0440\u044c \u043f\u0440\u0438\u043a\u0440\u0435\u043f\u0438 \u0441\u044e\u0434\u0430 \u043e\u0431\u044f\u0437\u0430\u0442\u0435\u043b\u044c\u043d\u043e \u043e\u0434\u043d\u043e \u0444\u043e\u0442\u043e \u0438 \u043e\u0434\u043d\u043e \u0432\u0438\u0434\u0435\u043e \u043e\u0434\u043d\u0438\u043c \u0438\u043b\u0438 \u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u0438\u043c\u0438 \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u044f\u043c\u0438. \u041a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439 \u044f \u0443\u0436\u0435 \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u043b. \u041f\u043e\u0442\u043e\u043c \u043d\u0430\u0436\u043c\u0438 \u043a\u043d\u043e\u043f\u043a\u0443 \u043d\u0438\u0436\u0435."
           ].join("\n"),
           components: [createTaskThreadRow(thread.id)]
         });

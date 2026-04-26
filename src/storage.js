@@ -6,6 +6,7 @@ const DATA_FILE = path.join(DATA_DIR, "store.json");
 
 const defaultState = {
   users: {},
+  currentTask: null,
   taskDrafts: {},
   taskSubmissions: {},
   adSubmissions: {},
@@ -37,6 +38,7 @@ function loadState() {
       ...(parsed.counters || {})
     },
     users: parsed.users || {},
+    currentTask: parsed.currentTask || null,
     taskDrafts: parsed.taskDrafts || {},
     taskSubmissions: parsed.taskSubmissions || {},
     adSubmissions: parsed.adSubmissions || {}

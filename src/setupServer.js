@@ -371,23 +371,23 @@ async function ensureVerificationMessage(channel, verifiedRole) {
 
 async function ensureTaskPanel(channel) {
   const content = [
-    "Сюда нельзя писать напрямую.",
+    "\u0421\u044e\u0434\u0430 \u043d\u0435\u043b\u044c\u0437\u044f \u043f\u0438\u0441\u0430\u0442\u044c \u043d\u0430\u043f\u0440\u044f\u043c\u0443\u044e.",
     "",
-    "Нажми кнопку ниже, чтобы открыть личную отправку задания.",
+    "\u041d\u0430\u0436\u043c\u0438 \u043a\u043d\u043e\u043f\u043a\u0443 \u043d\u0438\u0436\u0435, \u0447\u0442\u043e\u0431\u044b \u043e\u0442\u043a\u0440\u044b\u0442\u044c \u043b\u0438\u0447\u043d\u0443\u044e \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0443 \u0437\u0430\u0434\u0430\u043d\u0438\u044f.",
     "",
-    "Бот попросит комментарий, а потом создаст отдельную приватную ветку, куда можно будет загрузить скриншот или видео."
+    "\u0411\u043e\u0442 \u043f\u043e\u043f\u0440\u043e\u0441\u0438\u0442 \u043a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439, \u0430 \u043f\u043e\u0442\u043e\u043c \u0441\u043e\u0437\u0434\u0430\u0441\u0442 \u043e\u0442\u0434\u0435\u043b\u044c\u043d\u0443\u044e \u043f\u0440\u0438\u0432\u0430\u0442\u043d\u0443\u044e \u0432\u0435\u0442\u043a\u0443, \u043a\u0443\u0434\u0430 \u043d\u0443\u0436\u043d\u043e \u0431\u0443\u0434\u0435\u0442 \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u0438 \u0444\u043e\u0442\u043e, \u0438 \u0432\u0438\u0434\u0435\u043e."
   ].join("\n");
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId("task:start")
-      .setLabel("Отправить задание")
+      .setLabel("\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c \u0437\u0430\u0434\u0430\u043d\u0438\u0435")
       .setStyle(ButtonStyle.Primary)
   );
 
   const recent = await channel.messages.fetch({ limit: 10 }).catch(() => null);
   const existing = recent?.find(
-    (message) => message.author.id === channel.guild.members.me.id && message.content.includes("Сюда нельзя писать напрямую")
+    (message) => message.author.id === channel.guild.members.me.id && message.content.includes("\u0421\u044e\u0434\u0430 \u043d\u0435\u043b\u044c\u0437\u044f \u043f\u0438\u0441\u0430\u0442\u044c \u043d\u0430\u043f\u0440\u044f\u043c\u0443\u044e")
   );
 
   if (existing) {
