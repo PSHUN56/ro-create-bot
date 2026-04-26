@@ -1,10 +1,10 @@
 const { ChannelType, PermissionFlagsBits } = require("discord.js");
 
 const ROLE_NAMES = {
-  founder: "Основатель",
-  admin: "Администрация",
-  taskReviewer: "Проверяющий задания",
-  adReviewer: "Модератор объявлений",
+  founder: "Основатель Ro Create",
+  admin: "Администрация Ro Create",
+  taskReviewer: "Проверка заданий",
+  adReviewer: "Модерация объявлений",
   verified: "Верифицирован"
 };
 
@@ -13,162 +13,142 @@ const roleTemplates = [
   { name: ROLE_NAMES.admin, color: 0xef4444 },
   { name: ROLE_NAMES.taskReviewer, color: 0x22c55e },
   { name: ROLE_NAMES.adReviewer, color: 0x3b82f6 },
-  { name: ROLE_NAMES.verified, color: 0x38bdf8 }
+  { name: ROLE_NAMES.verified, color: 0xa855f7 }
+];
+
+const managedCategories = [
+  {
+    key: "info",
+    name: "📌 │ информация",
+    aliases: ["📌 │ информация", "информация", "ro create info"]
+  },
+  {
+    key: "tasks",
+    name: "🎯 │ задания",
+    aliases: ["🎯 │ задания", "задания", "ro create tasks"]
+  },
+  {
+    key: "market",
+    name: "📢 │ объявления",
+    aliases: ["📢 │ объявления", "объявления", "биржа ro create"]
+  },
+  {
+    key: "staff",
+    name: "🛡️ │ staff",
+    aliases: ["🛡️ │ staff", "staff", "система", "ro create system"]
+  }
 ];
 
 const managedTemplates = [
   {
     key: "news",
-    baseName: "новости",
-    aliases: ["новости", "news"],
+    name: "📣 │ новости",
+    aliases: ["📣 │ новости", "новости", "объявления"],
+    category: "info",
     type: ChannelType.GuildText,
-    visibility: "public",
-    placement: "publicHub",
-    icon: "📢",
-    memberCanSend: false,
-    publicCanSend: false
+    visibility: "private",
+    memberCanSend: false
   },
   {
     key: "verification",
-    baseName: "верификация",
-    aliases: ["верификация", "verification", "verify"],
+    name: "✅ │ верификация",
+    aliases: ["✅ │ верификация", "верификация"],
+    category: "info",
     type: ChannelType.GuildText,
-    visibility: "public",
-    placement: "publicHub",
-    icon: "✅",
-    memberCanSend: false,
-    publicCanSend: false
-  },
-  {
-    key: "ads",
-    baseName: "объявления",
-    aliases: ["объявления", "ads", "announcements"],
-    type: ChannelType.GuildText,
-    visibility: "verified",
-    placement: "marketHub",
-    icon: "📢",
+    visibility: "private",
     memberCanSend: false
   },
   {
     key: "tasks",
-    baseName: "ежедневные-задания",
-    aliases: ["ежедневные-задания", "задания", "tasks"],
+    name: "📋 │ задания",
+    aliases: ["📋 │ задания", "ежедневные-задания", "задания"],
+    category: "tasks",
     type: ChannelType.GuildText,
-    visibility: "verified",
-    placement: "taskHub",
-    icon: "🎯",
+    visibility: "private",
     memberCanSend: false
   },
   {
     key: "taskSubmit",
-    baseName: "отправить-задание",
-    aliases: ["отправить-задание", "сдать-задание", "task-submit"],
+    name: "📩 │ отправить-задание",
+    aliases: ["📩 │ отправить-задание", "отправить-задание"],
+    category: "tasks",
     type: ChannelType.GuildText,
-    visibility: "verified",
-    placement: "taskHub",
-    icon: "📩",
+    visibility: "private",
+    memberCanSend: false
+  },
+  {
+    key: "ads",
+    name: "📌 │ объявления",
+    aliases: ["📌 │ объявления", "объявления"],
+    category: "market",
+    type: ChannelType.GuildText,
+    visibility: "private",
     memberCanSend: false
   },
   {
     key: "taskReview",
-    baseName: "проверка-заданий",
-    aliases: ["проверка-заданий", "task-review"],
+    name: "🧪 │ проверка-заданий",
+    aliases: ["🧪 │ проверка-заданий", "проверка-заданий"],
+    category: "staff",
     type: ChannelType.GuildText,
     visibility: "staff",
-    placement: "staffHub",
-    icon: "🛡️",
     memberCanSend: true
   },
   {
     key: "adReview",
-    baseName: "проверка-объявлений",
-    aliases: ["проверка-объявлений", "ad-review"],
+    name: "🧾 │ проверка-объявлений",
+    aliases: ["🧾 │ проверка-объявлений", "проверка-объявлений"],
+    category: "staff",
     type: ChannelType.GuildText,
     visibility: "staff",
-    placement: "staffHub",
-    icon: "🛡️",
     memberCanSend: true
   }
 ];
 
-const obsoleteManagedTemplates = [
-  { aliases: ["обновления-бота"] },
-  { aliases: ["портфолио", "portfolio"] },
-  { aliases: ["devlog", "девлог"] },
-  { aliases: ["работа-и-монеты", "монеты", "экономика"] },
-  { aliases: ["инструкция-бота", "инструкция", "bot-guide"] },
-  { aliases: ["ro-create-система", "система-ro-create"] }
-];
-
-const legacyManagedCategories = [
-  "Ro Create | Система",
-  "🤖 │ система",
-  "Информация",
-  "Экономика",
-  "Штаб модерации"
-];
-
-const managedCategoryTemplate = {
-  publicHub: {
-    baseName: "основное",
-    aliases: ["основное", "информация", "information"],
-    icon: "📌"
-  },
-  marketHub: {
-    baseName: "биржа",
-    aliases: ["биржа", "биржа ro create", "market", "поиски"],
-    icon: "📢"
-  },
-  taskHub: {
-    baseName: "задания",
-    aliases: ["задания", "обучение", "tasks"],
-    icon: "🎯"
-  },
-  staffHub: {
-    baseName: "модерация",
-    aliases: ["модерация", "moderator-only", "staff", "штаб"],
-    icon: "🛡️"
-  }
-};
-
 function buildOverwrites({
   guild,
-  visibility,
-  verifiedRoleId,
-  staffRoleIds = [],
   ownerId,
-  botCanManageRoles = false,
-  memberCanSend = true,
-  publicCanSend = false
+  verifiedRoleId,
+  staffRoleIds,
+  visibility,
+  memberCanSend = true
 }) {
-  const overwrites = [];
-
-  if (visibility === "public") {
-    overwrites.push({
+  const overwrites = [
+    {
       id: guild.roles.everyone.id,
+      deny: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.CreatePublicThreads,
+        PermissionFlagsBits.CreatePrivateThreads,
+        PermissionFlagsBits.SendMessagesInThreads
+      ]
+    },
+    {
+      id: ownerId,
       allow: [
         PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
         PermissionFlagsBits.ReadMessageHistory,
-        ...(publicCanSend ? [PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks] : [])
+        PermissionFlagsBits.ManageChannels,
+        PermissionFlagsBits.ManageThreads,
+        PermissionFlagsBits.AttachFiles,
+        PermissionFlagsBits.EmbedLinks,
+        PermissionFlagsBits.SendMessagesInThreads
       ]
-    });
-  } else {
-    overwrites.push({
-      id: guild.roles.everyone.id,
-      deny: [PermissionFlagsBits.ViewChannel]
-    });
-  }
+    }
+  ];
 
-  if (visibility === "verified" && verifiedRoleId) {
+  if (verifiedRoleId && visibility === "verified") {
     overwrites.push({
       id: verifiedRoleId,
       allow: [
         PermissionFlagsBits.ViewChannel,
         PermissionFlagsBits.ReadMessageHistory,
-        ...(memberCanSend
-          ? [PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks]
-          : [])
-      ]
+        PermissionFlagsBits.AttachFiles,
+        PermissionFlagsBits.EmbedLinks
+      ].concat(memberCanSend ? [PermissionFlagsBits.SendMessages, PermissionFlagsBits.SendMessagesInThreads] : []),
+      deny: memberCanSend ? [] : [PermissionFlagsBits.SendMessages]
     });
   }
 
@@ -177,37 +157,15 @@ function buildOverwrites({
       id: roleId,
       allow: [
         PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
         PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.ManageMessages
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ManageMessages,
+        PermissionFlagsBits.AttachFiles,
+        PermissionFlagsBits.EmbedLinks,
+        PermissionFlagsBits.SendMessagesInThreads
       ]
     });
   }
-
-  if (ownerId) {
-    overwrites.push({
-      id: ownerId,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.ManageChannels
-      ]
-    });
-  }
-
-  overwrites.push({
-    id: guild.members.me.id,
-    allow: [
-      PermissionFlagsBits.ViewChannel,
-      PermissionFlagsBits.SendMessages,
-      PermissionFlagsBits.ReadMessageHistory,
-      PermissionFlagsBits.AttachFiles,
-      PermissionFlagsBits.EmbedLinks,
-      PermissionFlagsBits.ManageChannels,
-      ...(botCanManageRoles ? [PermissionFlagsBits.ManageRoles] : [])
-    ]
-  });
 
   return overwrites;
 }
@@ -215,9 +173,7 @@ function buildOverwrites({
 module.exports = {
   ROLE_NAMES,
   roleTemplates,
+  managedCategories,
   managedTemplates,
-  obsoleteManagedTemplates,
-  legacyManagedCategories,
-  managedCategoryTemplate,
   buildOverwrites
 };
