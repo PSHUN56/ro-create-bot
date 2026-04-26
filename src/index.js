@@ -116,6 +116,26 @@ function isUnknownInteractionError(error) {
   return error?.code === 10062;
 }
 
+function describeError(error) {
+  if (!error) {
+    return "Неизвестная ошибка.";
+  }
+
+  if (error.code === 50013) {
+    return "Боту не хватает прав Discord. Проверь права на роли, каналы и треды.";
+  }
+
+  if (error.code === 50001) {
+    return "У бота нет доступа к нужному серверу или каналу.";
+  }
+
+  if (error.code === "ENOSPC" || error.errno === -28) {
+    return "На хостинге закончилось место на диске.";
+  }
+
+  return error.message || "Неизвестная ошибка.";
+}
+
 async function safeDeferReply(interaction, options) {
   try {
     await interaction.deferReply(options);
@@ -949,7 +969,7 @@ client.on("interactionCreate", async (interaction) => {
         } catch (error) {
           console.error(error);
           return interaction.reply({
-            content: "�� ������� ������� ��������� ����� ��� �������. ����� ������� `/setup-server`, ����� ��� ������� ����� ������, � ������� ����� ���� �� ���������� �������.",
+            content: `Не удалось открыть приватную ветку для задания. ${describeError(error)}`,
             flags: 64
           }).catch(() => null);
         }
@@ -1099,14 +1119,14 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.deferred || interaction.replied) {
       await interaction.followUp({
-        content: "Что-то пошло не так. Проверь права бота и настройки `.env`.",
+        content: `Что-то пошло не так: ${describeError(error)}`,
         flags: 64
       }).catch(() => null);
       return;
     }
 
     await interaction.reply({
-      content: "Что-то пошло не так. Проверь права бота и настройки `.env`.",
+      content: `Что-то пошло не так: ${describeError(error)}`,
       flags: 64
     }).catch(() => null);
   }
