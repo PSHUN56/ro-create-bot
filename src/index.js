@@ -494,6 +494,30 @@ client.on("interactionCreate", async (interaction) => {
       const [kind, action, submissionId] = interaction.customId.split(":");
       const state = loadState();
 
+      if (kind === "verify" && action === "grant") {
+        const verifiedRole = interaction.guild.roles.cache.find((role) => role.name === "Верифицирован");
+        if (!verifiedRole) {
+          return interaction.reply({
+            content: "Роль `Верифицирован` пока не найдена. Сначала выполни `/setup-server`.",
+            ephemeral: true
+          });
+        }
+
+        if (interaction.member.roles.cache.has(verifiedRole.id)) {
+          return interaction.reply({
+            content: "Ты уже прошел верификацию. Добро пожаловать в основной сервер.",
+            ephemeral: true
+          });
+        }
+
+        await interaction.member.roles.add(verifiedRole, "Верификация через кнопку Ro Create");
+
+        return interaction.reply({
+          content: `Готово. Тебе выдана роль <@&${verifiedRole.id}>, и основные каналы сервера уже открыты.`,
+          ephemeral: true
+        });
+      }
+
       if (kind === "task") {
         if (!hasTaskReviewerRole(interaction.member)) {
           return interaction.reply({ content: "У тебя нет прав на проверку заданий.", ephemeral: true });
