@@ -18,7 +18,7 @@ const {
 } = require("discord.js");
 const { withState, ensureUser, loadState } = require("./storage");
 const { getTaskForDate } = require("./tasks");
-const { setupServer, hasTaskReviewerRole, hasAdReviewerRole } = require("./setupServer");
+const { setupServer, cleanupManagedArtifacts, hasTaskReviewerRole, hasAdReviewerRole } = require("./setupServer");
 const { ROLE_NAMES, managedTemplates } = require("./config/serverTemplate");
 
 const token = process.env.DISCORD_TOKEN;
@@ -38,6 +38,9 @@ const commands = [
   new SlashCommandBuilder()
     .setName("setup-server")
     .setDescription("Настроить роли, доступ и служебные каналы Ro Create"),
+  new SlashCommandBuilder()
+    .setName("cleanup-bot")
+    .setDescription("Удалить старые каналы и категории, которые раньше создавал бот"),
   new SlashCommandBuilder()
     .setName("balance")
     .setDescription("Показать баланс монет"),
@@ -291,6 +294,24 @@ client.on("interactionCreate", async (interaction) => {
 
         return interaction.editReply({
           content: `Ro Create настроен.\n${result.instructions.join("\n")}`
+        });
+      }
+
+      if (interaction.commandName === "cleanup-bot") {
+        if (!member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+          return interaction.reply({
+            content: "Для этой команды нужно право `Управлять сервером`.",
+            flags: 64
+          });
+        }
+
+        await interaction.deferReply({ flags: 64 });
+        const removed = await cleanupManagedArtifacts(guild);
+
+        return interaction.editReply({
+          content: removed.length > 0
+            ? `Я убрал старые ботские каналы и категории: ${removed.join(", ")}`
+            : "Я не нашел старых ботских каналов, которые можно безопасно удалить."
         });
       }
 

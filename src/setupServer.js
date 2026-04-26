@@ -115,6 +115,20 @@ function findCategoryByAliases(guild, aliases) {
   );
 }
 
+function isLegacyManagedCategoryName(name) {
+  return legacyManagedCategories.some((entry) => normalizeName(entry) === normalizeName(name));
+}
+
+function isObsoleteManagedChannel(channel) {
+  return obsoleteManagedTemplates.some((template) => matchesAlias(channel.name, template.aliases));
+}
+
+function isManagedChannelTemplate(channel) {
+  return managedTemplates.some((template) =>
+    channel.type === template.type && matchesAlias(channel.name, [template.baseName, ...template.aliases])
+  );
+}
+
 function pickPlacementCategories(guild, existingChannels) {
   return {
     publicHub:
@@ -236,6 +250,53 @@ async function cleanupObsolete(guild, preservedIds) {
     if (children.size === 0) {
       removed.push(category.name);
       await category.delete("Удаление пустой старой категории Ro Create").catch(() => null);
+    }
+  }
+
+  return removed;
+}
+
+async function cleanupManagedArtifacts(guild) {
+  await guild.channels.fetch();
+
+  const removed = [];
+  const managedCategoryIds = new Set(
+    guild.channels.cache
+      .filter((channel) => channel.type === ChannelType.GuildCategory && isLegacyManagedCategoryName(channel.name))
+      .map((channel) => channel.id)
+  );
+
+  const channelsToDelete = guild.channels.cache.filter((channel) => {
+    if ([ChannelType.GuildText, ChannelType.GuildForum, ChannelType.GuildVoice].includes(channel.type) === false) {
+      return false;
+    }
+
+    if (isObsoleteManagedChannel(channel)) {
+      return true;
+    }
+
+    if (channel.parentId && managedCategoryIds.has(channel.parentId) && isManagedChannelTemplate(channel)) {
+      return true;
+    }
+
+    return false;
+  });
+
+  for (const channel of channelsToDelete.values()) {
+    removed.push(channel.type === ChannelType.GuildCategory ? channel.name : `#${channel.name}`);
+    await channel.delete("Очистка старых каналов Ro Create").catch(() => null);
+  }
+
+  for (const categoryId of managedCategoryIds) {
+    const category = guild.channels.cache.get(categoryId);
+    if (!category) {
+      continue;
+    }
+
+    const children = guild.channels.cache.filter((channel) => channel.parentId === category.id);
+    if (children.size === 0) {
+      removed.push(category.name);
+      await category.delete("Очистка старой категории Ro Create").catch(() => null);
     }
   }
 
@@ -437,6 +498,7 @@ function hasAdReviewerRole(member) {
 
 module.exports = {
   setupServer,
+  cleanupManagedArtifacts,
   hasTaskReviewerRole,
   hasAdReviewerRole
 };
