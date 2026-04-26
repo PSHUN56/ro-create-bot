@@ -110,6 +110,22 @@ async function registerCommands() {
   await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands });
 }
 
+function isUnknownInteractionError(error) {
+  return error?.code === 10062;
+}
+
+async function safeDeferReply(interaction, options) {
+  try {
+    await interaction.deferReply(options);
+    return true;
+  } catch (error) {
+    if (isUnknownInteractionError(error)) {
+      return false;
+    }
+    throw error;
+  }
+}
+
 function normalizeName(value) {
   return value.trim().toLowerCase();
 }
@@ -287,7 +303,10 @@ client.on("interactionCreate", async (interaction) => {
           });
         }
 
-        await interaction.deferReply({ flags: 64 });
+        const accepted = await safeDeferReply(interaction, { flags: 64 });
+        if (!accepted) {
+          return;
+        }
         const result = await setupServer(guild, interaction.member);
 
         return interaction.editReply({
@@ -303,7 +322,10 @@ client.on("interactionCreate", async (interaction) => {
           });
         }
 
-        await interaction.deferReply({ flags: 64 });
+        const accepted = await safeDeferReply(interaction, { flags: 64 });
+        if (!accepted) {
+          return;
+        }
         const removed = await cleanupManagedArtifacts(guild);
 
         return interaction.editReply({
@@ -1037,6 +1059,10 @@ client.on("interactionCreate", async (interaction) => {
       }
     }
   } catch (error) {
+    if (isUnknownInteractionError(error)) {
+      return;
+    }
+
     console.error(error);
 
     if (interaction.deferred || interaction.replied) {
