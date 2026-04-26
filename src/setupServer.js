@@ -12,7 +12,8 @@ const {
   managedCategories,
   managedTemplates,
   legacyCategoryNames,
-  legacyChannelNames
+  legacyChannelNames,
+  buildOverwrites
 } = require("./config/serverTemplate");
 const { loadState, withState } = require("./storage");
 
@@ -271,6 +272,28 @@ async function ensureTaskPanel(channel) {
   return channel.send({ embeds: [embed], components: [row] });
 }
 
+async function syncExistingCategory(category, overwriteOptions) {
+  await category.permissionOverwrites.set(
+    buildOverwrites({
+      ...overwriteOptions,
+      visibility: "staff",
+      memberCanSend: false
+    })
+  ).catch(() => null);
+}
+
+async function syncExistingChannel(channel, template, overwriteOptions) {
+  await channel.permissionOverwrites.set(
+    buildOverwrites({
+      ...overwriteOptions,
+      visibility: template.visibility,
+      memberCanSend: template.memberCanSend,
+      allowThreadMessages: template.allowThreadMessages,
+      allowPrivateThreads: template.allowPrivateThreads
+    })
+  ).catch(() => null);
+}
+
 async function setupServer(guild, ownerMember) {
   await guild.channels.fetch();
   await guild.roles.fetch();
@@ -283,6 +306,15 @@ async function setupServer(guild, ownerMember) {
   await ensureRoleHierarchy(guild, roleMap);
   await assignFounderRole(ownerMember, roleMap[ROLE_NAMES.founder]);
 
+  const overwriteOptions = {
+    guild,
+    ownerId: ownerMember.id,
+    verifiedRoleId: roleMap[ROLE_NAMES.verified]?.id,
+    staffRoleIds: Object.values(roleMap)
+      .filter((role) => STAFF_ROLE_NAMES.includes(role.name))
+      .map((role) => role.id)
+  };
+
   const artifacts = readArtifacts(guild.id);
   const categoryMap = {};
   const channelMap = {};
@@ -291,6 +323,7 @@ async function setupServer(guild, ownerMember) {
   for (const template of managedCategories) {
     const category = findExistingCategory(guild, template, artifacts);
     if (category) {
+      await syncExistingCategory(category, overwriteOptions);
       categoryMap[template.key] = category;
       saveCategoryArtifact(guild.id, template.key, category.id);
     } else {
@@ -301,6 +334,7 @@ async function setupServer(guild, ownerMember) {
   for (const template of managedTemplates) {
     const channel = findExistingChannel(guild, template, artifacts);
     if (channel) {
+      await syncExistingChannel(channel, template, overwriteOptions);
       channelMap[template.key] = { channel, removedDuplicates: [] };
       saveChannelArtifact(guild.id, template.key, channel.id);
     } else {
@@ -317,7 +351,7 @@ async function setupServer(guild, ownerMember) {
   }
 
   const instructions = [
-    "Готово. Я подключил бота к уже настроенной структуре сервера и не трогал расположение каналов."
+    "Готово. Я подключил бота к уже настроенной структуре сервера, обновил права и не трогал расположение каналов."
   ];
 
   if (channelMap.news?.channel && channelMap.verification?.channel) {
