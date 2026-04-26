@@ -5,6 +5,7 @@ const roleTemplates = [
   { name: "Администрация", color: 0xef4444 },
   { name: "Проверяющий задания", color: 0x22c55e },
   { name: "Модератор объявлений", color: 0x3b82f6 },
+  { name: "Верифицирован", color: 0x38bdf8 },
   { name: "Разработчик", color: 0x8b5cf6 },
   { name: "Скриптер", color: 0x14b8a6 },
   { name: "Билдер", color: 0xf97316 },
@@ -16,7 +17,7 @@ const roleTemplates = [
 const managedTemplates = [
   {
     key: "news",
-    name: "новости",
+    baseName: "новости",
     aliases: ["новости", "news"],
     type: ChannelType.GuildText,
     private: false,
@@ -24,15 +25,15 @@ const managedTemplates = [
   },
   {
     key: "ads",
-    name: "объявления",
-    aliases: ["объявления", "announcements", "ads"],
+    baseName: "объявления",
+    aliases: ["объявления", "ads", "announcements"],
     type: ChannelType.GuildText,
     private: false,
     section: "public"
   },
   {
     key: "economy",
-    name: "работа-и-монеты",
+    baseName: "работа-и-монеты",
     aliases: ["работа-и-монеты", "монеты", "экономика"],
     type: ChannelType.GuildText,
     private: true,
@@ -40,7 +41,7 @@ const managedTemplates = [
   },
   {
     key: "dailyTasks",
-    name: "ежедневные-задания",
+    baseName: "ежедневные-задания",
     aliases: ["ежедневные-задания", "задания", "daily-tasks"],
     type: ChannelType.GuildText,
     private: true,
@@ -48,31 +49,31 @@ const managedTemplates = [
   },
   {
     key: "taskSubmit",
-    name: "отправка-заданий",
+    baseName: "отправка-заданий",
     aliases: ["отправка-заданий", "сдать-задание", "task-submit"],
     type: ChannelType.GuildText,
     private: true,
     section: "system"
   },
   {
-    key: "portfolio",
-    name: "портфолио",
-    aliases: ["портфолио", "portfolio"],
+    key: "verification",
+    baseName: "верификация",
+    aliases: ["верификация", "verification"],
     type: ChannelType.GuildText,
     private: true,
     section: "system"
   },
   {
-    key: "devlog",
-    name: "devlog",
-    aliases: ["devlog", "девлог"],
+    key: "instructions",
+    baseName: "инструкция-бота",
+    aliases: ["инструкция-бота", "инструкция", "bot-guide"],
     type: ChannelType.GuildText,
     private: true,
     section: "system"
   },
   {
     key: "taskReview",
-    name: "проверка-заданий",
+    baseName: "проверка-заданий",
     aliases: ["проверка-заданий", "task-review"],
     type: ChannelType.GuildText,
     private: true,
@@ -80,7 +81,7 @@ const managedTemplates = [
   },
   {
     key: "adReview",
-    name: "проверка-объявлений",
+    baseName: "проверка-объявлений",
     aliases: ["проверка-объявлений", "ad-review"],
     type: ChannelType.GuildText,
     private: true,
@@ -88,10 +89,23 @@ const managedTemplates = [
   }
 ];
 
+const obsoleteManagedTemplates = [
+  { baseName: "обновления-бота", aliases: ["обновления-бота"] },
+  { baseName: "портфолио", aliases: ["портфолио", "portfolio"] },
+  { baseName: "devlog", aliases: ["devlog", "девлог"] }
+];
+
+const legacyManagedCategories = [
+  "Информация",
+  "Экономика",
+  "Биржа Ro Create",
+  "Штаб модерации"
+];
+
 const managedCategoryTemplate = {
   key: "system",
-  name: "Ro Create | Система",
-  aliases: ["Ro Create | Система", "RoCreate | Система", "Система Ro Create"]
+  baseName: "ro-create-система",
+  aliases: ["ro-create-система", "ro create система", "система-ro-create", "rocreate-system"]
 };
 
 function buildOverwrites(guild, isPrivate, visibleRoleIds = [], extraMemberIds = []) {
@@ -139,6 +153,8 @@ function buildOverwrites(guild, isPrivate, visibleRoleIds = [], extraMemberIds =
 module.exports = {
   roleTemplates,
   managedTemplates,
+  obsoleteManagedTemplates,
+  legacyManagedCategories,
   managedCategoryTemplate,
   buildOverwrites
 };

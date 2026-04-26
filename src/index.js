@@ -19,6 +19,7 @@ const {
 const { withState, ensureUser, loadState } = require("./storage");
 const { getTaskForDate } = require("./tasks");
 const { setupServer, hasTaskReviewerRole, hasAdReviewerRole } = require("./setupServer");
+const { managedTemplates } = require("./config/serverTemplate");
 
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.CLIENT_ID;
@@ -148,6 +149,32 @@ async function findChannelByName(guild, name) {
 
   return guild.channels.cache.find(
     (channel) => channel.type === ChannelType.GuildText && channel.name === name
+  );
+}
+
+function normalizeName(value) {
+  return value.trim().toLowerCase();
+}
+
+function matchesAlias(channelName, aliases) {
+  const normalized = normalizeName(channelName);
+  return aliases.some((alias) => normalizeName(alias) === normalized);
+}
+
+async function findManagedChannel(guild, key) {
+  const template = managedTemplates.find((entry) => entry.key === key);
+  if (!template) {
+    return null;
+  }
+
+  if (guild.channels.cache.size === 0) {
+    await guild.channels.fetch();
+  }
+
+  return guild.channels.cache.find(
+    (channel) =>
+      channel.type === ChannelType.GuildText
+      && matchesAlias(channel.name, [template.baseName, ...template.aliases])
   );
 }
 
@@ -301,7 +328,7 @@ client.on("interactionCreate", async (interaction) => {
         const task = getTaskForDate();
         const screenshot = interaction.options.getAttachment("скриншот", true);
         const description = interaction.options.getString("описание", true);
-        const reviewChannel = await findChannelByName(guild, "проверка-заданий");
+        const reviewChannel = await findManagedChannel(guild, "taskReview");
 
         if (!reviewChannel) {
           return interaction.reply({
@@ -367,7 +394,7 @@ client.on("interactionCreate", async (interaction) => {
         const description = interaction.options.getString("описание", true);
         const payment = interaction.options.getString("оплата", true);
         const image = interaction.options.getAttachment("фото");
-        const reviewChannel = await findChannelByName(guild, "проверка-объявлений");
+        const reviewChannel = await findManagedChannel(guild, "adReview");
 
         if (!reviewChannel) {
           return interaction.reply({
@@ -539,7 +566,7 @@ client.on("interactionCreate", async (interaction) => {
         }
 
         if (action === "approve") {
-          const adsChannel = await findChannelByName(interaction.guild, "объявления");
+          const adsChannel = await findManagedChannel(interaction.guild, "ads");
           if (!adsChannel) {
             return interaction.reply({
               content: "Канал `объявления` не найден. Сначала выполни `/setup-server`.",
