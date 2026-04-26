@@ -262,6 +262,20 @@ function detectAttachmentKind(attachment) {
   return "other";
 }
 
+function submissionMediaFields(submission) {
+  const fields = [];
+
+  if (submission.mediaUrl) {
+    fields.push(`[Фото](${submission.mediaUrl})`);
+  }
+
+  if (submission.mediaUrl2) {
+    fields.push(`[Видео](${submission.mediaUrl2})`);
+  }
+
+  return fields.length > 0 ? fields.join("\n") : "Не прикреплено";
+}
+
 async function publishCurrentTask(guild, task) {
   const channel = await findManagedChannel(guild, "tasks");
   if (!channel) {
