@@ -13,46 +13,86 @@ const roleTemplates = [
   { name: "Аниматор", color: 0x6366f1 }
 ];
 
-const categoryTemplates = [
+const managedTemplates = [
   {
-    key: "publicInfo",
-    name: "Информация",
+    key: "news",
+    name: "новости",
+    aliases: ["новости", "news"],
+    type: ChannelType.GuildText,
     private: false,
-    channels: [
-      { key: "news", name: "новости", type: ChannelType.GuildText, private: false },
-      { key: "updates", name: "обновления-бота", type: ChannelType.GuildText, private: true }
-    ]
+    section: "public"
+  },
+  {
+    key: "ads",
+    name: "объявления",
+    aliases: ["объявления", "announcements", "ads"],
+    type: ChannelType.GuildText,
+    private: false,
+    section: "public"
   },
   {
     key: "economy",
-    name: "Экономика",
+    name: "работа-и-монеты",
+    aliases: ["работа-и-монеты", "монеты", "экономика"],
+    type: ChannelType.GuildText,
     private: true,
-    channels: [
-      { key: "economy", name: "работа-и-монеты", type: ChannelType.GuildText, private: true },
-      { key: "dailyTasks", name: "ежедневные-задания", type: ChannelType.GuildText, private: true },
-      { key: "taskSubmit", name: "отправка-заданий", type: ChannelType.GuildText, private: true }
-    ]
+    section: "system"
   },
   {
-    key: "market",
-    name: "Биржа Ro Create",
+    key: "dailyTasks",
+    name: "ежедневные-задания",
+    aliases: ["ежедневные-задания", "задания", "daily-tasks"],
+    type: ChannelType.GuildText,
     private: true,
-    channels: [
-      { key: "ads", name: "объявления", type: ChannelType.GuildText, private: true },
-      { key: "portfolio", name: "портфолио", type: ChannelType.GuildText, private: true },
-      { key: "devlog", name: "devlog", type: ChannelType.GuildText, private: true }
-    ]
+    section: "system"
   },
   {
-    key: "staff",
-    name: "Штаб модерации",
+    key: "taskSubmit",
+    name: "отправка-заданий",
+    aliases: ["отправка-заданий", "сдать-задание", "task-submit"],
+    type: ChannelType.GuildText,
     private: true,
-    channels: [
-      { key: "taskReview", name: "проверка-заданий", type: ChannelType.GuildText, private: true },
-      { key: "adReview", name: "проверка-объявлений", type: ChannelType.GuildText, private: true }
-    ]
+    section: "system"
+  },
+  {
+    key: "portfolio",
+    name: "портфолио",
+    aliases: ["портфолио", "portfolio"],
+    type: ChannelType.GuildText,
+    private: true,
+    section: "system"
+  },
+  {
+    key: "devlog",
+    name: "devlog",
+    aliases: ["devlog", "девлог"],
+    type: ChannelType.GuildText,
+    private: true,
+    section: "system"
+  },
+  {
+    key: "taskReview",
+    name: "проверка-заданий",
+    aliases: ["проверка-заданий", "task-review"],
+    type: ChannelType.GuildText,
+    private: true,
+    section: "staff"
+  },
+  {
+    key: "adReview",
+    name: "проверка-объявлений",
+    aliases: ["проверка-объявлений", "ad-review"],
+    type: ChannelType.GuildText,
+    private: true,
+    section: "staff"
   }
 ];
+
+const managedCategoryTemplate = {
+  key: "system",
+  name: "Ro Create | Система",
+  aliases: ["Ro Create | Система", "RoCreate | Система", "Система Ro Create"]
+};
 
 function buildOverwrites(guild, isPrivate, visibleRoleIds = [], extraMemberIds = []) {
   const overwrites = [];
@@ -85,7 +125,12 @@ function buildOverwrites(guild, isPrivate, visibleRoleIds = [], extraMemberIds =
 
   overwrites.push({
     id: guild.members.me.id,
-    allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ManageChannels, PermissionFlagsBits.ReadMessageHistory]
+    allow: [
+      PermissionFlagsBits.ViewChannel,
+      PermissionFlagsBits.SendMessages,
+      PermissionFlagsBits.ManageChannels,
+      PermissionFlagsBits.ReadMessageHistory
+    ]
   });
 
   return overwrites;
@@ -93,6 +138,7 @@ function buildOverwrites(guild, isPrivate, visibleRoleIds = [], extraMemberIds =
 
 module.exports = {
   roleTemplates,
-  categoryTemplates,
+  managedTemplates,
+  managedCategoryTemplate,
   buildOverwrites
 };

@@ -169,7 +169,7 @@ async function updateStoredReviewMessage(guild, submission, embed) {
   await message.edit({ embeds: [embed], components: [] }).catch(() => null);
 }
 
-client.once("ready", async () => {
+client.once("clientReady", async () => {
   await registerCommands();
   console.log(`Ro Create bot online as ${client.user.tag}`);
 });

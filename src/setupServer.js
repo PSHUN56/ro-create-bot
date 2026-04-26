@@ -1,5 +1,26 @@
 const { ChannelType, PermissionFlagsBits } = require("discord.js");
-const { roleTemplates, categoryTemplates, buildOverwrites } = require("./config/serverTemplate");
+const {
+  roleTemplates,
+  managedTemplates,
+  managedCategoryTemplate,
+  buildOverwrites
+} = require("./config/serverTemplate");
+
+const STAFF_ROLE_NAMES = [
+  "Основатель",
+  "Администрация",
+  "Проверяющий задания",
+  "Модератор объявлений"
+];
+
+function normalizeName(value) {
+  return value.trim().toLowerCase();
+}
+
+function matchesAlias(channelName, aliases) {
+  const normalized = normalizeName(channelName);
+  return aliases.some((alias) => normalizeName(alias) === normalized);
+}
 
 async function ensureRole(guild, template) {
   const existing = guild.roles.cache.find((role) => role.name === template.name);
@@ -14,60 +35,96 @@ async function ensureRole(guild, template) {
   });
 }
 
-async function ensureChannel(guild, parent, template, visibleRoleIds, ownerId) {
-  const existing = guild.channels.cache.find(
-    (channel) => channel.parentId === parent.id && channel.name === template.name
+function findCategory(guild, aliases) {
+  return guild.channels.cache.find(
+    (channel) =>
+      channel.type === ChannelType.GuildCategory && matchesAlias(channel.name, aliases)
   );
-
-  if (existing) {
-    return existing;
-  }
-
-  return guild.channels.create({
-    name: template.name,
-    type: template.type,
-    parent: parent.id,
-    permissionOverwrites: buildOverwrites(guild, template.private, visibleRoleIds, [ownerId]),
-    reason: "Автонастройка Ro Create"
-  });
 }
 
-async function ensureCategory(guild, template, visibleRoleIds, ownerId) {
-  let category = guild.channels.cache.find(
-    (channel) => channel.type === ChannelType.GuildCategory && channel.name === template.name
-  );
+async function ensureManagedCategory(guild, visibleRoleIds, ownerId) {
+  let category = findCategory(guild, managedCategoryTemplate.aliases);
 
   if (!category) {
     category = await guild.channels.create({
-      name: template.name,
+      name: managedCategoryTemplate.name,
       type: ChannelType.GuildCategory,
-      permissionOverwrites: buildOverwrites(guild, template.private, visibleRoleIds, [ownerId]),
+      permissionOverwrites: buildOverwrites(guild, true, visibleRoleIds, [ownerId]),
+      reason: "Автонастройка Ro Create"
+    });
+  } else {
+    await category.edit({
+      permissionOverwrites: buildOverwrites(guild, true, visibleRoleIds, [ownerId]),
       reason: "Автонастройка Ro Create"
     });
   }
 
-  const channelMap = {};
-
-  for (const channelTemplate of template.channels) {
-    channelMap[channelTemplate.key] = await ensureChannel(
-      guild,
-      category,
-      channelTemplate,
-      visibleRoleIds,
-      ownerId
-    );
-  }
-
-  return { category, channels: channelMap };
+  return category;
 }
 
-function isStaffRole(name) {
-  return ["Основатель", "Администрация", "Проверяющий задания", "Модератор объявлений"].includes(name);
+function findExistingChannel(guild, template) {
+  return guild.channels.cache.find(
+    (channel) =>
+      channel.type === template.type && matchesAlias(channel.name, template.aliases)
+  );
+}
+
+async function ensureManagedChannel(guild, template, managedCategory, visibleRoleIds, ownerId) {
+  const existing = findExistingChannel(guild, template);
+  const options = {
+    permissionOverwrites: buildOverwrites(guild, template.private, visibleRoleIds, [ownerId]),
+    reason: "Автонастройка Ro Create"
+  };
+
+  if (template.section !== "public") {
+    options.parent = managedCategory.id;
+  }
+
+  if (existing) {
+    const patch = {
+      permissionOverwrites: options.permissionOverwrites,
+      reason: options.reason
+    };
+
+    if (template.section !== "public") {
+      patch.parent = managedCategory.id;
+    }
+
+    if (existing.name !== template.name) {
+      patch.name = template.name;
+    }
+
+    await existing.edit(patch);
+    return { channel: existing, reused: true };
+  }
+
+  const created = await guild.channels.create({
+    name: template.name,
+    type: template.type,
+    parent: template.section !== "public" ? managedCategory.id : undefined,
+    permissionOverwrites: options.permissionOverwrites,
+    reason: "Автонастройка Ro Create"
+  });
+
+  return { channel: created, reused: false };
+}
+
+function buildStyleSummary(resultMap) {
+  const reused = Object.values(resultMap)
+    .filter((entry) => entry.reused)
+    .map((entry) => `#${entry.channel.name}`);
+  const created = Object.values(resultMap)
+    .filter((entry) => !entry.reused)
+    .map((entry) => `#${entry.channel.name}`);
+
+  return { reused, created };
 }
 
 async function setupServer(guild, ownerMember) {
-  const roleMap = {};
+  await guild.channels.fetch();
+  await guild.roles.fetch();
 
+  const roleMap = {};
   for (const template of roleTemplates) {
     roleMap[template.name] = await ensureRole(guild, template);
   }
@@ -78,28 +135,47 @@ async function setupServer(guild, ownerMember) {
   }
 
   const visibleRoleIds = Object.values(roleMap)
-    .filter((role) => isStaffRole(role.name))
+    .filter((role) => STAFF_ROLE_NAMES.includes(role.name))
     .map((role) => role.id);
 
-  const created = {};
+  const managedCategory = await ensureManagedCategory(
+    guild,
+    visibleRoleIds,
+    ownerMember.id
+  );
 
-  for (const categoryTemplate of categoryTemplates) {
-    created[categoryTemplate.key] = await ensureCategory(
+  const channelMap = {};
+  for (const template of managedTemplates) {
+    channelMap[template.key] = await ensureManagedChannel(
       guild,
-      categoryTemplate,
+      template,
+      managedCategory,
       visibleRoleIds,
       ownerMember.id
     );
   }
 
+  const styleSummary = buildStyleSummary(channelMap);
   const instructions = [
-    `Канал <#${created.publicInfo.channels.news.id}> открыт для всех участников.`,
-    `Остальные каналы созданы приватными для теста и сейчас видны только staff-ролям и тебе.`,
-    `Проверка заданий идет через <#${created.staff.channels.taskReview.id}>.`,
-    `Проверка объявлений идет через <#${created.staff.channels.adReview.id}>.`
+    `Открыты для всех только <#${channelMap.news.channel.id}> и <#${channelMap.ads.channel.id}>.`,
+    `Все остальные управляемые каналы приватны и собраны в категории <#${managedCategory.id}> для теста.`,
+    `Бот переиспользовал существующие каналы, где это было возможно, и добавил только недостающие.`
   ];
 
-  return { roleMap, created, instructions };
+  if (styleSummary.reused.length > 0) {
+    instructions.push(`Переиспользовано: ${styleSummary.reused.join(", ")}.`);
+  }
+
+  if (styleSummary.created.length > 0) {
+    instructions.push(`Добавлено: ${styleSummary.created.join(", ")}.`);
+  }
+
+  return {
+    roleMap,
+    managedCategory,
+    channelMap,
+    instructions
+  };
 }
 
 function hasTaskReviewerRole(member) {
