@@ -6,6 +6,7 @@ const DATA_FILE = path.join(DATA_DIR, "store.json");
 
 const defaultState = {
   users: {},
+  taskDrafts: {},
   taskSubmissions: {},
   adSubmissions: {},
   counters: {
@@ -27,7 +28,19 @@ function ensureDataFile() {
 function loadState() {
   ensureDataFile();
   const raw = fs.readFileSync(DATA_FILE, "utf8");
-  return JSON.parse(raw);
+  const parsed = JSON.parse(raw);
+  return {
+    ...defaultState,
+    ...parsed,
+    counters: {
+      ...defaultState.counters,
+      ...(parsed.counters || {})
+    },
+    users: parsed.users || {},
+    taskDrafts: parsed.taskDrafts || {},
+    taskSubmissions: parsed.taskSubmissions || {},
+    adSubmissions: parsed.adSubmissions || {}
+  };
 }
 
 function saveState(state) {

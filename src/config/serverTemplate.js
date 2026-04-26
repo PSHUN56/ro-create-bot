@@ -24,7 +24,9 @@ const managedTemplates = [
     type: ChannelType.GuildText,
     visibility: "public",
     placement: "publicHub",
-    icon: "📢"
+    icon: "📢",
+    memberCanSend: false,
+    publicCanSend: false
   },
   {
     key: "verification",
@@ -33,7 +35,9 @@ const managedTemplates = [
     type: ChannelType.GuildText,
     visibility: "public",
     placement: "publicHub",
-    icon: "✅"
+    icon: "✅",
+    memberCanSend: false,
+    publicCanSend: false
   },
   {
     key: "ads",
@@ -42,7 +46,8 @@ const managedTemplates = [
     type: ChannelType.GuildText,
     visibility: "verified",
     placement: "marketHub",
-    icon: "📢"
+    icon: "📢",
+    memberCanSend: false
   },
   {
     key: "tasks",
@@ -51,7 +56,8 @@ const managedTemplates = [
     type: ChannelType.GuildText,
     visibility: "verified",
     placement: "taskHub",
-    icon: "🎯"
+    icon: "🎯",
+    memberCanSend: false
   },
   {
     key: "taskSubmit",
@@ -60,7 +66,8 @@ const managedTemplates = [
     type: ChannelType.GuildText,
     visibility: "verified",
     placement: "taskHub",
-    icon: "📩"
+    icon: "📩",
+    memberCanSend: false
   },
   {
     key: "taskReview",
@@ -69,7 +76,8 @@ const managedTemplates = [
     type: ChannelType.GuildText,
     visibility: "staff",
     placement: "staffHub",
-    icon: "🛡️"
+    icon: "🛡️",
+    memberCanSend: true
   },
   {
     key: "adReview",
@@ -78,7 +86,8 @@ const managedTemplates = [
     type: ChannelType.GuildText,
     visibility: "staff",
     placement: "staffHub",
-    icon: "🛡️"
+    icon: "🛡️",
+    memberCanSend: true
   }
 ];
 
@@ -128,14 +137,20 @@ function buildOverwrites({
   verifiedRoleId,
   staffRoleIds = [],
   ownerId,
-  botCanManageRoles = false
+  botCanManageRoles = false,
+  memberCanSend = true,
+  publicCanSend = false
 }) {
   const overwrites = [];
 
   if (visibility === "public") {
     overwrites.push({
       id: guild.roles.everyone.id,
-      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory]
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.ReadMessageHistory,
+        ...(publicCanSend ? [PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks] : [])
+      ]
     });
   } else {
     overwrites.push({
@@ -149,10 +164,10 @@ function buildOverwrites({
       id: verifiedRoleId,
       allow: [
         PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
         PermissionFlagsBits.ReadMessageHistory,
-        PermissionFlagsBits.AttachFiles,
-        PermissionFlagsBits.EmbedLinks
+        ...(memberCanSend
+          ? [PermissionFlagsBits.SendMessages, PermissionFlagsBits.AttachFiles, PermissionFlagsBits.EmbedLinks]
+          : [])
       ]
     });
   }

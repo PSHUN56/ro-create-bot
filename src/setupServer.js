@@ -168,7 +168,9 @@ async function ensureManagedChannel(guild, template, style, categoryMap, overwri
     categoryMap,
     {
       ...overwriteOptions,
-      visibility: template.visibility === "staff" ? "staff" : "verified"
+      visibility: template.visibility === "staff" ? "staff" : "verified",
+      memberCanSend: false,
+      publicCanSend: false
     }
   );
 
@@ -177,7 +179,9 @@ async function ensureManagedChannel(guild, template, style, categoryMap, overwri
     parent: category?.id || null,
     permissionOverwrites: buildOverwrites({
       ...overwriteOptions,
-      visibility: template.visibility
+      visibility: template.visibility,
+      memberCanSend: template.memberCanSend !== false,
+      publicCanSend: template.publicCanSend === true
     }),
     reason: "Автонастройка Ro Create"
   };
@@ -243,19 +247,35 @@ function isReviewChannel(channel) {
   return normalized.includes("проверка") || normalized.includes("moderator-only");
 }
 
-async function lockServerToVerified(guild, newsChannelId, verificationChannelId, overwriteOptions) {
+async function lockServerToVerified(guild, channelMap, overwriteOptions) {
+  const publicIds = new Set([
+    channelMap.news.channel.id,
+    channelMap.verification.channel.id
+  ]);
+  const staffIds = new Set([
+    channelMap.taskReview.channel.id,
+    channelMap.adReview.channel.id
+  ]);
+  const readOnlyVerifiedIds = new Set([
+    channelMap.ads.channel.id,
+    channelMap.tasks.channel.id,
+    channelMap.taskSubmit.channel.id
+  ]);
+
   for (const channel of guild.channels.cache.values()) {
     const visibility =
-      channel.id === newsChannelId || channel.id === verificationChannelId
+      publicIds.has(channel.id)
         ? "public"
-        : isReviewChannel(channel)
+        : staffIds.has(channel.id) || isReviewChannel(channel)
           ? "staff"
           : "verified";
 
     await channel.edit({
       permissionOverwrites: buildOverwrites({
         ...overwriteOptions,
-        visibility
+        visibility,
+        memberCanSend: !readOnlyVerifiedIds.has(channel.id) && visibility !== "public",
+        publicCanSend: false
       }),
       reason: "Ro Create: доступ через верификацию"
     }).catch(() => null);
@@ -290,27 +310,31 @@ async function ensureVerificationMessage(channel, verifiedRole) {
 
 async function ensureTaskPanel(channel) {
   const content = [
-    "Сюда отправляются выполненные ежедневные задания.",
+    "Сюда нельзя писать напрямую.",
     "",
-    "Что можно приложить:",
-    "— скриншот",
-    "— видео",
-    "— короткий комментарий о том, что именно было сделано",
+    "Нажми кнопку ниже, чтобы открыть личную отправку задания.",
     "",
-    "Для отправки используй `/submit-task`."
+    "Бот попросит комментарий, а потом создаст отдельную приватную ветку, куда можно будет загрузить скриншот или видео."
   ].join("\n");
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId("task:start")
+      .setLabel("Отправить задание")
+      .setStyle(ButtonStyle.Primary)
+  );
 
   const recent = await channel.messages.fetch({ limit: 10 }).catch(() => null);
   const existing = recent?.find(
-    (message) => message.author.id === channel.guild.members.me.id && message.content.includes("Сюда отправляются")
+    (message) => message.author.id === channel.guild.members.me.id && message.content.includes("Сюда нельзя писать напрямую")
   );
 
   if (existing) {
-    await existing.edit(content);
+    await existing.edit({ content, components: [row] });
     return;
   }
 
-  await channel.send({ content });
+  await channel.send({ content, components: [row] });
 }
 
 async function setupServer(guild, ownerMember) {
@@ -372,8 +396,7 @@ async function setupServer(guild, ownerMember) {
 
   await lockServerToVerified(
     guild,
-    channelMap.news.channel.id,
-    channelMap.verification.channel.id,
+    channelMap,
     overwriteOptions
   );
 

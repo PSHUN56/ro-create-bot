@@ -171,6 +171,15 @@ function createAdReviewRow(submissionId) {
   );
 }
 
+function createTaskThreadRow(threadId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`task:submitthread:${threadId}`)
+      .setLabel("Отправить на проверку")
+      .setStyle(ButtonStyle.Success)
+  );
+}
+
 function buildTaskEmbed(task, dateKey) {
   return new EmbedBuilder()
     .setTitle(`Ежедневное задание: ${task.title}`)
@@ -550,6 +559,22 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.isButton()) {
       const [kind, action, submissionId] = interaction.customId.split(":");
 
+      if (kind === "task" && action === "start") {
+        const modal = new ModalBuilder()
+          .setCustomId("task-start-modal")
+          .setTitle("Новое задание");
+
+        const commentInput = new TextInputBuilder()
+          .setCustomId("comment")
+          .setLabel("Что ты сделал")
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(true)
+          .setMaxLength(600);
+
+        modal.addComponents(new ActionRowBuilder().addComponents(commentInput));
+        return interaction.showModal(modal);
+      }
+
       if (kind === "verify" && action === "grant") {
         const verifiedRole = interaction.guild.roles.cache.find((role) => role.name === ROLE_NAMES.verified);
         if (!verifiedRole) {
@@ -569,6 +594,129 @@ client.on("interactionCreate", async (interaction) => {
         await interaction.member.roles.add(verifiedRole, "Верификация через кнопку Ro Create");
         return interaction.reply({
           content: `Готово. Тебе выдана роль <@&${verifiedRole.id}>, и основные каналы уже открыты.`,
+          flags: 64
+        });
+      }
+
+      if (kind === "task" && action === "submitthread") {
+        const state = loadState();
+        const draft = state.taskDrafts[submissionId];
+
+        if (!draft) {
+          return interaction.reply({
+            content: "Черновик этой отправки уже закрыт или не найден.",
+            flags: 64
+          });
+        }
+
+        if (draft.userId !== interaction.user.id && !hasTaskReviewerRole(interaction.member)) {
+          return interaction.reply({
+            content: "Эта ветка не принадлежит тебе.",
+            flags: 64
+          });
+        }
+
+        const thread = interaction.channel;
+        const messages = await thread.messages.fetch({ limit: 50 }).catch(() => null);
+        const attachments = [];
+
+        for (const message of messages?.values() || []) {
+          if (message.author.id !== draft.userId) {
+            continue;
+          }
+
+          for (const attachment of message.attachments.values()) {
+            attachments.push({
+              url: attachment.url,
+              contentType: attachment.contentType || null
+            });
+          }
+        }
+
+        if (attachments.length === 0) {
+          return interaction.reply({
+            content: "Сначала прикрепи в эту ветку хотя бы один скриншот или видео, потом нажми кнопку снова.",
+            flags: 64
+          });
+        }
+
+        const reviewChannel = await findManagedChannel(interaction.guild, "taskReview");
+        if (!reviewChannel) {
+          return interaction.reply({
+            content: "Канал проверки заданий не найден. Сначала выполни `/setup-server`.",
+            flags: 64
+          });
+        }
+
+        const submission = withState((mutable) => {
+          const currentDraft = mutable.taskDrafts[submissionId];
+          if (!currentDraft) {
+            return null;
+          }
+
+          const id = String(mutable.counters.taskSubmission++);
+          const record = {
+            id,
+            guildId: interaction.guildId,
+            userId: currentDraft.userId,
+            username: currentDraft.username,
+            taskId: currentDraft.taskId,
+            taskTitle: currentDraft.taskTitle,
+            reward: currentDraft.reward,
+            comment: currentDraft.comment,
+            mediaUrl: attachments[0]?.url || null,
+            mediaUrl2: attachments[1]?.url || null,
+            mediaContentType: attachments[0]?.contentType || null,
+            threadId: submissionId,
+            status: "pending",
+            createdAt: new Date().toISOString()
+          };
+
+          mutable.taskSubmissions[id] = record;
+          delete mutable.taskDrafts[submissionId];
+          return record;
+        });
+
+        if (!submission) {
+          return interaction.reply({
+            content: "Черновик этой отправки уже закрыт.",
+            flags: 64
+          });
+        }
+
+        const embed = new EmbedBuilder()
+          .setTitle(`Проверка задания #${submission.id}`)
+          .setColor(0xf59e0b)
+          .setDescription(submission.comment)
+          .addFields(
+            { name: "Участник", value: `<@${submission.userId}>`, inline: true },
+            { name: "Задание", value: submission.taskTitle, inline: true },
+            { name: "Награда", value: `${submission.reward} монет`, inline: true },
+            { name: "Медиа", value: submissionMediaFields(submission) }
+          )
+          .setFooter({ text: `ID заявки: ${submission.id}` });
+
+        if (submission.mediaContentType?.startsWith("image/")) {
+          embed.setImage(submission.mediaUrl);
+        }
+
+        const reviewMessage = await reviewChannel.send({
+          embeds: [embed],
+          components: [createTaskReviewRow(submission.id)]
+        });
+
+        withState((mutable) => {
+          if (mutable.taskSubmissions[submission.id]) {
+            mutable.taskSubmissions[submission.id].reviewChannelId = reviewMessage.channelId;
+            mutable.taskSubmissions[submission.id].reviewMessageId = reviewMessage.id;
+          }
+        });
+
+        await thread.send(`Готово. Я отправил твою работу на проверку. Награда за это задание: ${submission.reward} монет.`).catch(() => null);
+        await thread.setArchived(true).catch(() => null);
+
+        return interaction.reply({
+          content: "Заявка отправлена на проверку.",
           flags: 64
         });
       }
@@ -721,7 +869,62 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.isModalSubmit()) {
       const [kind, submissionId] = interaction.customId.split(":");
-      const reason = interaction.fields.getTextInputValue("reason");
+      const reason = interaction.fields.fields.has("reason")
+        ? interaction.fields.getTextInputValue("reason")
+        : null;
+
+      if (interaction.customId === "task-start-modal") {
+        const comment = interaction.fields.getTextInputValue("comment");
+        const task = getTaskForDate();
+        const taskSubmitChannel = await findManagedChannel(interaction.guild, "taskSubmit");
+
+        if (!taskSubmitChannel) {
+          return interaction.reply({
+            content: "Канал отправки заданий не найден. Сначала выполни `/setup-server`.",
+            flags: 64
+          });
+        }
+
+        const threadName = `задание-${interaction.user.username}`.toLowerCase().replace(/[^a-zа-яё0-9-_]/gi, "-").slice(0, 80);
+        const thread = await taskSubmitChannel.threads.create({
+          name: threadName,
+          autoArchiveDuration: 1440,
+          type: ChannelType.PrivateThread,
+          invitable: false,
+          reason: "Личная отправка задания Ro Create"
+        });
+
+        await thread.members.add(interaction.user.id).catch(() => null);
+
+        withState((mutable) => {
+          mutable.taskDrafts[thread.id] = {
+            threadId: thread.id,
+            guildId: interaction.guildId,
+            userId: interaction.user.id,
+            username: interaction.user.username,
+            taskId: task.id,
+            taskTitle: task.title,
+            reward: task.reward,
+            comment,
+            createdAt: new Date().toISOString()
+          };
+        });
+
+        await thread.send({
+          content: [
+            `Задание: **${task.title}**`,
+            `Награда: **${task.reward} монет**`,
+            "",
+            "Теперь прикрепи сюда скриншот или видео одним или несколькими сообщениями, а потом нажми кнопку ниже."
+          ].join("\n"),
+          components: [createTaskThreadRow(thread.id)]
+        });
+
+        return interaction.reply({
+          content: `Я открыл тебе приватную ветку для загрузки задания: <#${thread.id}>`,
+          flags: 64
+        });
+      }
 
       if (kind === "task-reject-modal") {
         if (!hasTaskReviewerRole(interaction.member)) {
