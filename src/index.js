@@ -136,6 +136,20 @@ function describeError(error) {
   return error.message || "Неизвестная ошибка.";
 }
 
+function canSeeTechnicalErrors(interaction) {
+  return Boolean(interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild));
+}
+
+function buildUserErrorMessage(interaction, error) {
+  const detailed = describeError(error);
+
+  if (canSeeTechnicalErrors(interaction)) {
+    return `Что-то пошло не так: ${detailed}`;
+  }
+
+  return "Сейчас не удалось завершить действие. Попробуй еще раз чуть позже или напиши администрации.";
+}
+
 async function safeDeferReply(interaction, options) {
   try {
     await interaction.deferReply(options);
@@ -983,7 +997,9 @@ client.on("interactionCreate", async (interaction) => {
         } catch (error) {
           console.error(error);
           return interaction.reply({
-            content: `Не удалось открыть приватную ветку для задания. ${describeError(error)}`,
+            content: canSeeTechnicalErrors(interaction)
+              ? `Не удалось открыть приватную ветку для задания. ${describeError(error)}`
+              : "Не удалось открыть приватную ветку для задания. Попробуй еще раз чуть позже или напиши администрации.",
             flags: 64
           }).catch(() => null);
         }
@@ -1133,14 +1149,14 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.deferred || interaction.replied) {
       await interaction.followUp({
-        content: `Что-то пошло не так: ${describeError(error)}`,
+        content: buildUserErrorMessage(interaction, error),
         flags: 64
       }).catch(() => null);
       return;
     }
 
     await interaction.reply({
-      content: `Что-то пошло не так: ${describeError(error)}`,
+      content: buildUserErrorMessage(interaction, error),
       flags: 64
     }).catch(() => null);
   }
