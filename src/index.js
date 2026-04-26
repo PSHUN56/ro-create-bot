@@ -59,11 +59,11 @@ const commands = [
     .addAttachmentOption((option) =>
       option.setName("медиа").setDescription("Скриншот или видео выполненного задания").setRequired(true)
     )
-    .addAttachmentOption((option) =>
-      option.setName("медиа2").setDescription("Дополнительный файл, если нужен").setRequired(false)
-    )
     .addStringOption((option) =>
       option.setName("комментарий").setDescription("Что именно ты сделал и что проверить").setRequired(true).setMaxLength(600)
+    )
+    .addAttachmentOption((option) =>
+      option.setName("медиа2").setDescription("Дополнительный файл, если нужен").setRequired(false)
     ),
   new SlashCommandBuilder()
     .setName("post-ad")
