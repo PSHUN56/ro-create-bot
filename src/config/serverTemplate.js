@@ -17,16 +17,33 @@ const roleTemplates = [
 ];
 
 const managedCategories = [
-  { key: "welcome", name: "✨・rocreate старт" },
-  { key: "tasks", name: "🎯・rocreate задания" },
-  { key: "market", name: "💼・rocreate биржа" },
-  { key: "staff", name: "🛡️・rocreate staff" }
+  {
+    key: "welcome",
+    name: "✨・rocreate старт",
+    aliases: ["rocreate старт", "старт", "основное", "информация"]
+  },
+  {
+    key: "tasks",
+    name: "🎯・rocreate задания",
+    aliases: ["rocreate задания", "задания"]
+  },
+  {
+    key: "market",
+    name: "💼・rocreate биржа",
+    aliases: ["rocreate биржа", "биржа", "объявления"]
+  },
+  {
+    key: "staff",
+    name: "🛡️・rocreate staff",
+    aliases: ["rocreate staff", "staff"]
+  }
 ];
 
 const managedTemplates = [
   {
     key: "news",
     name: "📣・новости",
+    aliases: ["новости", "📣│новости", "📣 | новости", "объявления"],
     category: "welcome",
     type: ChannelType.GuildText,
     visibility: "public",
@@ -35,6 +52,7 @@ const managedTemplates = [
   {
     key: "verification",
     name: "✅・верификация",
+    aliases: ["верификация", "✅│верификация", "✅ | верификация"],
     category: "welcome",
     type: ChannelType.GuildText,
     visibility: "public",
@@ -43,6 +61,7 @@ const managedTemplates = [
   {
     key: "tasks",
     name: "📋・активное-задание",
+    aliases: ["активное-задание", "задачи", "📋│активное-задание"],
     category: "tasks",
     type: ChannelType.GuildText,
     visibility: "verified",
@@ -51,6 +70,7 @@ const managedTemplates = [
   {
     key: "taskSubmit",
     name: "📩・сдать-задание",
+    aliases: ["сдать-задание", "отправить-задание", "📩│сдать-задание", "📩│отправить-задание"],
     category: "tasks",
     type: ChannelType.GuildText,
     visibility: "verified",
@@ -61,6 +81,7 @@ const managedTemplates = [
   {
     key: "ads",
     name: "📌・объявления",
+    aliases: ["объявления", "📌│объявления"],
     category: "market",
     type: ChannelType.GuildText,
     visibility: "verified",
@@ -69,6 +90,7 @@ const managedTemplates = [
   {
     key: "taskReview",
     name: "🧪・проверка-заданий",
+    aliases: ["проверка-заданий", "🧪│проверка-заданий"],
     category: "staff",
     type: ChannelType.GuildText,
     visibility: "staff",
@@ -77,6 +99,7 @@ const managedTemplates = [
   {
     key: "adReview",
     name: "🧾・проверка-объявлений",
+    aliases: ["проверка-объявлений", "🧾│проверка-объявлений"],
     category: "staff",
     type: ChannelType.GuildText,
     visibility: "staff",
@@ -87,7 +110,7 @@ const managedTemplates = [
 const legacyCategoryNames = [
   "📌 │ информация",
   "🎯 │ задания",
-  "📢 │ объявления",
+  "📣 │ объявления",
   "🛡️ │ staff",
   "информация",
   "биржа",
@@ -104,14 +127,7 @@ const legacyChannelNames = [
   "📩 │ отправить-задание",
   "📌 │ объявления",
   "🧪 │ проверка-заданий",
-  "🧾 │ проверка-объявлений",
-  "📣・новости",
-  "✅・верификация",
-  "📋・активное-задание",
-  "📩・сдать-задание",
-  "📌・объявления",
-  "🧪・проверка-заданий",
-  "🧾・проверка-объявлений"
+  "🧾 │ проверка-объявлений"
 ];
 
 function buildOverwrites({

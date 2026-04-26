@@ -36,10 +36,12 @@ const client = new Client({
 const commands = [
   new SlashCommandBuilder()
     .setName("setup-server")
-    .setDescription("Configure Ro Create roles, access, and service channels"),
+    .setDescription("Configure Ro Create roles, access, and service channels")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder()
     .setName("cleanup-bot")
-    .setDescription("Remove old channels and categories previously created by the bot"),
+    .setDescription("Remove old channels and categories previously created by the bot")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
   new SlashCommandBuilder()
     .setName("balance")
     .setDescription("Show coin balance"),
@@ -143,6 +145,14 @@ async function findManagedChannel(guild, key) {
 
   if (guild.channels.cache.size === 0) {
     await guild.channels.fetch();
+  }
+
+  const trackedId = loadState().managedArtifacts?.[guild.id]?.channels?.[key];
+  if (trackedId) {
+    const trackedChannel = guild.channels.cache.get(trackedId);
+    if (trackedChannel?.type === ChannelType.GuildText) {
+      return trackedChannel;
+    }
   }
 
   return guild.channels.cache.find(
@@ -558,6 +568,13 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       if (interaction.commandName === "add-coins") {
+        if (!member.permissions.has(PermissionFlagsBits.ManageGuild)) {
+          return interaction.reply({
+            content: "Для этой команды нужно право `Управлять сервером`.",
+            flags: 64
+          });
+        }
+
         const target = interaction.options.getUser("user", true);
         const amount = interaction.options.getInteger("amount", true);
 

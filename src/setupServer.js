@@ -12,8 +12,7 @@ const {
   managedCategories,
   managedTemplates,
   legacyCategoryNames,
-  legacyChannelNames,
-  buildOverwrites
+  legacyChannelNames
 } = require("./config/serverTemplate");
 const { loadState, withState } = require("./storage");
 
@@ -26,6 +25,10 @@ const STAFF_ROLE_NAMES = [
 
 function normalizeName(value) {
   return value.trim().toLowerCase();
+}
+
+function aliasesFor(template) {
+  return [template.name, ...(template.aliases || [])].map(normalizeName);
 }
 
 function getArtifacts(state, guildId) {
@@ -72,7 +75,7 @@ async function ensureRole(guild, template) {
   return guild.roles.create({
     name: template.name,
     color: template.color,
-    reason: "Ro Create clean setup"
+    reason: "Ro Create setup"
   });
 }
 
@@ -107,7 +110,7 @@ async function assignFounderRole(ownerMember, founderRole) {
     return;
   }
 
-  await ownerMember.roles.add(founderRole, "Ro Create clean setup").catch(() => null);
+  await ownerMember.roles.add(founderRole, "Ro Create setup").catch(() => null);
 }
 
 async function cleanupManagedArtifacts(guild) {
@@ -117,13 +120,12 @@ async function cleanupManagedArtifacts(guild) {
   const artifacts = readArtifacts(guild.id);
   const trackedChannelIds = new Set(Object.values(artifacts.channels || {}));
   const trackedCategoryIds = new Set(Object.values(artifacts.categories || {}));
+  const legacyCategories = new Set(legacyCategoryNames.map(normalizeName));
+  const legacyChannels = new Set(legacyChannelNames.map(normalizeName));
 
   const categoriesToDelete = guild.channels.cache.filter((channel) =>
     channel.type === ChannelType.GuildCategory
-    && (
-      trackedCategoryIds.has(channel.id)
-      || legacyCategoryNames.map(normalizeName).includes(normalizeName(channel.name))
-    )
+    && (trackedCategoryIds.has(channel.id) || legacyCategories.has(normalizeName(channel.name)))
   );
 
   const categoryIds = new Set(categoriesToDelete.map((channel) => channel.id));
@@ -133,15 +135,9 @@ async function cleanupManagedArtifacts(guild) {
       return false;
     }
 
-    if (trackedChannelIds.has(channel.id)) {
-      return true;
-    }
-
-    if (channel.parentId && categoryIds.has(channel.parentId)) {
-      return true;
-    }
-
-    return legacyChannelNames.map(normalizeName).includes(normalizeName(channel.name));
+    return trackedChannelIds.has(channel.id)
+      || (channel.parentId && categoryIds.has(channel.parentId))
+      || legacyChannels.has(normalizeName(channel.name));
   });
 
   for (const channel of channelsToDelete.values()) {
@@ -161,39 +157,59 @@ async function cleanupManagedArtifacts(guild) {
   return removed;
 }
 
-async function ensureCategory(guild, template, overwriteOptions) {
-  const channel = await guild.channels.create({
-    name: template.name,
-    type: ChannelType.GuildCategory,
-    permissionOverwrites: buildOverwrites({
-      ...overwriteOptions,
-      visibility: "staff",
-      memberCanSend: false
-    }),
-    reason: "Ro Create clean setup"
-  });
+function findTrackedChannel(guild, id, expectedType = null) {
+  if (!id) {
+    return null;
+  }
 
-  saveCategoryArtifact(guild.id, template.key, channel.id);
+  const channel = guild.channels.cache.get(id) || null;
+  if (!channel) {
+    return null;
+  }
+
+  if (expectedType && channel.type !== expectedType) {
+    return null;
+  }
+
   return channel;
 }
 
-async function ensureChannel(guild, template, categoryMap, overwriteOptions) {
-  const channel = await guild.channels.create({
-    name: template.name,
-    type: template.type,
-    parent: categoryMap[template.category].id,
-    permissionOverwrites: buildOverwrites({
-      ...overwriteOptions,
-      visibility: template.visibility,
-      memberCanSend: template.memberCanSend,
-      allowThreadMessages: template.allowThreadMessages,
-      allowPrivateThreads: template.allowPrivateThreads
-    }),
-    reason: "Ro Create clean setup"
-  });
+function findExistingCategory(guild, template, artifacts) {
+  const tracked = findTrackedChannel(guild, artifacts.categories?.[template.key], ChannelType.GuildCategory);
+  if (tracked) {
+    return tracked;
+  }
 
-  saveChannelArtifact(guild.id, template.key, channel.id);
-  return { channel, removedDuplicates: [] };
+  const aliases = new Set(aliasesFor(template));
+  return guild.channels.cache.find((channel) =>
+    channel.type === ChannelType.GuildCategory && aliases.has(normalizeName(channel.name))
+  ) || null;
+}
+
+function findExistingChannel(guild, template, artifacts) {
+  const tracked = findTrackedChannel(guild, artifacts.channels?.[template.key], template.type);
+  if (tracked) {
+    return tracked;
+  }
+
+  const aliases = new Set(aliasesFor(template));
+  return guild.channels.cache.find((channel) =>
+    channel.type === template.type && aliases.has(normalizeName(channel.name))
+  ) || null;
+}
+
+async function findExistingPanelMessage(channel, customId) {
+  const messages = await channel.messages.fetch({ limit: 15 }).catch(() => null);
+  if (!messages) {
+    return null;
+  }
+
+  return messages.find((message) =>
+    message.author.id === channel.client.user.id
+    && message.components.some((row) =>
+      row.components.some((component) => component.customId === customId)
+    )
+  ) || null;
 }
 
 async function ensureVerificationMessage(channel, verifiedRole) {
@@ -216,7 +232,13 @@ async function ensureVerificationMessage(channel, verifiedRole) {
       .setStyle(ButtonStyle.Success)
   );
 
-  await channel.send({ embeds: [embed], components: [row] });
+  const existing = await findExistingPanelMessage(channel, "verify:grant");
+  if (existing) {
+    await existing.edit({ embeds: [embed], components: [row] });
+    return existing;
+  }
+
+  return channel.send({ embeds: [embed], components: [row] });
 }
 
 async function ensureTaskPanel(channel) {
@@ -240,14 +262,18 @@ async function ensureTaskPanel(channel) {
       .setStyle(ButtonStyle.Primary)
   );
 
-  await channel.send({ embeds: [embed], components: [row] });
+  const existing = await findExistingPanelMessage(channel, "task:start");
+  if (existing) {
+    await existing.edit({ embeds: [embed], components: [row] });
+    return existing;
+  }
+
+  return channel.send({ embeds: [embed], components: [row] });
 }
 
 async function setupServer(guild, ownerMember) {
   await guild.channels.fetch();
   await guild.roles.fetch();
-
-  const removedBeforeSetup = await cleanupManagedArtifacts(guild);
 
   const roleMap = {};
   for (const template of roleTemplates) {
@@ -257,38 +283,66 @@ async function setupServer(guild, ownerMember) {
   await ensureRoleHierarchy(guild, roleMap);
   await assignFounderRole(ownerMember, roleMap[ROLE_NAMES.founder]);
 
-  const overwriteOptions = {
-    guild,
-    ownerId: ownerMember.id,
-    verifiedRoleId: roleMap[ROLE_NAMES.verified]?.id,
-    staffRoleIds: Object.values(roleMap)
-      .filter((role) => STAFF_ROLE_NAMES.includes(role.name))
-      .map((role) => role.id)
-  };
-
+  const artifacts = readArtifacts(guild.id);
   const categoryMap = {};
-  for (const template of managedCategories) {
-    categoryMap[template.key] = await ensureCategory(guild, template, overwriteOptions);
-  }
-
   const channelMap = {};
-  for (const template of managedTemplates) {
-    channelMap[template.key] = await ensureChannel(guild, template, categoryMap, overwriteOptions);
+  const missing = [];
+
+  for (const template of managedCategories) {
+    const category = findExistingCategory(guild, template, artifacts);
+    if (category) {
+      categoryMap[template.key] = category;
+      saveCategoryArtifact(guild.id, template.key, category.id);
+    } else {
+      missing.push(`категория ${template.name}`);
+    }
   }
 
-  await ensureVerificationMessage(channelMap.verification.channel, roleMap[ROLE_NAMES.verified]);
-  await ensureTaskPanel(channelMap.taskSubmit.channel);
+  for (const template of managedTemplates) {
+    const channel = findExistingChannel(guild, template, artifacts);
+    if (channel) {
+      channelMap[template.key] = { channel, removedDuplicates: [] };
+      saveChannelArtifact(guild.id, template.key, channel.id);
+    } else {
+      missing.push(`канал ${template.name}`);
+    }
+  }
+
+  if (channelMap.verification?.channel) {
+    await ensureVerificationMessage(channelMap.verification.channel, roleMap[ROLE_NAMES.verified]);
+  }
+
+  if (channelMap.taskSubmit?.channel) {
+    await ensureTaskPanel(channelMap.taskSubmit.channel);
+  }
 
   const instructions = [
-    `Готово. Я полностью пересобрал структуру Ro Create в приватном стиле.`,
-    `Стартовые каналы: <#${channelMap.news.channel.id}> и <#${channelMap.verification.channel.id}>.`,
-    `Задания: <#${channelMap.tasks.channel.id}> и <#${channelMap.taskSubmit.channel.id}>.`,
-    `Биржа: <#${channelMap.ads.channel.id}>.`,
-    `Staff-проверка: <#${channelMap.taskReview.channel.id}> и <#${channelMap.adReview.channel.id}>.`
+    "Готово. Я подключил бота к уже настроенной структуре сервера и не трогал расположение каналов."
   ];
 
-  if (removedBeforeSetup.length > 0) {
-    instructions.push(`Перед пересборкой я удалил старые ботские объекты: ${removedBeforeSetup.join(", ")}.`);
+  if (channelMap.news?.channel && channelMap.verification?.channel) {
+    instructions.push(`Стартовые каналы: <#${channelMap.news.channel.id}> и <#${channelMap.verification.channel.id}>.`);
+  }
+
+  if (channelMap.tasks?.channel && channelMap.taskSubmit?.channel) {
+    instructions.push(`Задания: <#${channelMap.tasks.channel.id}> и <#${channelMap.taskSubmit.channel.id}>.`);
+  }
+
+  if (channelMap.ads?.channel) {
+    instructions.push(`Объявления: <#${channelMap.ads.channel.id}>.`);
+  }
+
+  if (channelMap.taskReview?.channel || channelMap.adReview?.channel) {
+    instructions.push(
+      `Staff-каналы: ${[channelMap.taskReview?.channel, channelMap.adReview?.channel]
+        .filter(Boolean)
+        .map((channel) => `<#${channel.id}>`)
+        .join(" и ")}.`
+    );
+  }
+
+  if (missing.length > 0) {
+    instructions.push(`Не нашёл и не стал создавать: ${missing.join(", ")}.`);
   }
 
   return { roleMap, channelMap, instructions };
