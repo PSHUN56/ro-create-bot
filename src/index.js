@@ -705,9 +705,9 @@ client.on("interactionCreate", async (interaction) => {
         const imageAttachment = attachments.find((attachment) => detectAttachmentKind(attachment) === "image");
         const videoAttachment = attachments.find((attachment) => detectAttachmentKind(attachment) === "video");
 
-        if (!imageAttachment || !videoAttachment) {
+        if (!imageAttachment && !videoAttachment) {
           return interaction.reply({
-            content: "\u0414\u043b\u044f \u043e\u0442\u043f\u0440\u0430\u0432\u043a\u0438 \u043d\u0443\u0436\u043d\u043e \u043f\u0440\u0438\u043a\u0440\u0435\u043f\u0438\u0442\u044c \u0438 \u0444\u043e\u0442\u043e, \u0438 \u0432\u0438\u0434\u0435\u043e. \u041f\u043e\u0441\u043b\u0435 \u044d\u0442\u043e\u0433\u043e \u043d\u0430\u0436\u043c\u0438 \u043a\u043d\u043e\u043f\u043a\u0443 \u0435\u0449\u0435 \u0440\u0430\u0437.",
+            content: "Для отправки нужно прикрепить хотя бы одно фото или одно видео. После этого нажми кнопку еще раз.",
             flags: 64
           });
         }
@@ -736,9 +736,9 @@ client.on("interactionCreate", async (interaction) => {
             taskTitle: currentDraft.taskTitle,
             reward: currentDraft.reward,
             comment: currentDraft.comment,
-            mediaUrl: imageAttachment.url,
-            mediaUrl2: videoAttachment.url,
-            mediaContentType: imageAttachment.contentType || null,
+            mediaUrl: imageAttachment?.url || null,
+            mediaUrl2: videoAttachment?.url || null,
+            mediaContentType: imageAttachment?.contentType || videoAttachment?.contentType || null,
             threadId: submissionId,
             status: "pending",
             createdAt: new Date().toISOString()
@@ -1009,7 +1009,7 @@ client.on("interactionCreate", async (interaction) => {
             `\u0417\u0430\u0434\u0430\u043d\u0438\u0435: **${task.title}**`,
             `\u041d\u0430\u0433\u0440\u0430\u0434\u0430: **${task.reward} \u043c\u043e\u043d\u0435\u0442**`,
             "",
-            "\u0422\u0435\u043f\u0435\u0440\u044c \u043f\u0440\u0438\u043a\u0440\u0435\u043f\u0438 \u0441\u044e\u0434\u0430 \u043e\u0431\u044f\u0437\u0430\u0442\u0435\u043b\u044c\u043d\u043e \u043e\u0434\u043d\u043e \u0444\u043e\u0442\u043e \u0438 \u043e\u0434\u043d\u043e \u0432\u0438\u0434\u0435\u043e \u043e\u0434\u043d\u0438\u043c \u0438\u043b\u0438 \u043d\u0435\u0441\u043a\u043e\u043b\u044c\u043a\u0438\u043c\u0438 \u0441\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u044f\u043c\u0438. \u041a\u043e\u043c\u043c\u0435\u043d\u0442\u0430\u0440\u0438\u0439 \u044f \u0443\u0436\u0435 \u0441\u043e\u0445\u0440\u0430\u043d\u0438\u043b. \u041f\u043e\u0442\u043e\u043c \u043d\u0430\u0436\u043c\u0438 \u043a\u043d\u043e\u043f\u043a\u0443 \u043d\u0438\u0436\u0435."
+            "Теперь прикрепи сюда фото, видео или оба варианта сразу одним или несколькими сообщениями. Комментарий я уже сохранил. Потом нажми кнопку ниже."
           ].join("\n"),
           components: [createTaskThreadRow(thread.id)]
         });
