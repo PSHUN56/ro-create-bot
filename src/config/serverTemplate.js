@@ -74,7 +74,9 @@ const managedTemplates = [
     category: "tasks",
     type: ChannelType.GuildText,
     visibility: "private",
-    memberCanSend: false
+    memberCanSend: false,
+    allowThreadMessages: true,
+    allowPrivateThreads: true
   },
   {
     key: "ads",
@@ -111,7 +113,9 @@ function buildOverwrites({
   verifiedRoleId,
   staffRoleIds,
   visibility,
-  memberCanSend = true
+  memberCanSend = true,
+  allowThreadMessages = false,
+  allowPrivateThreads = false
 }) {
   const overwrites = [
     {
@@ -134,6 +138,7 @@ function buildOverwrites({
         PermissionFlagsBits.ManageThreads,
         PermissionFlagsBits.AttachFiles,
         PermissionFlagsBits.EmbedLinks,
+        PermissionFlagsBits.CreatePrivateThreads,
         PermissionFlagsBits.SendMessagesInThreads
       ]
     }
@@ -147,8 +152,15 @@ function buildOverwrites({
         PermissionFlagsBits.ReadMessageHistory,
         PermissionFlagsBits.AttachFiles,
         PermissionFlagsBits.EmbedLinks
-      ].concat(memberCanSend ? [PermissionFlagsBits.SendMessages, PermissionFlagsBits.SendMessagesInThreads] : []),
-      deny: memberCanSend ? [] : [PermissionFlagsBits.SendMessages]
+      ]
+        .concat(memberCanSend ? [PermissionFlagsBits.SendMessages] : [])
+        .concat(allowThreadMessages ? [PermissionFlagsBits.SendMessagesInThreads] : [])
+        .concat(allowPrivateThreads ? [PermissionFlagsBits.CreatePrivateThreads] : []),
+      deny: [
+        ...(memberCanSend ? [] : [PermissionFlagsBits.SendMessages]),
+        ...(allowThreadMessages ? [] : [PermissionFlagsBits.SendMessagesInThreads]),
+        ...(allowPrivateThreads ? [] : [PermissionFlagsBits.CreatePrivateThreads])
+      ]
     });
   }
 

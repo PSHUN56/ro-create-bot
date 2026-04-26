@@ -133,7 +133,9 @@ async function ensureChannel(guild, template, categoryMap, overwriteOptions) {
   const permissionOverwrites = buildOverwrites({
     ...overwriteOptions,
     visibility: template.visibility,
-    memberCanSend: template.memberCanSend
+    memberCanSend: template.memberCanSend,
+    allowThreadMessages: template.allowThreadMessages,
+    allowPrivateThreads: template.allowPrivateThreads
   });
 
   if (existing) {
