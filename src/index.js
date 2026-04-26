@@ -26,7 +26,7 @@ const guildId = process.env.GUILD_ID;
 const announcementCost = Number(process.env.ANNOUNCEMENT_COST || 2000);
 
 if (!token || !clientId || !guildId) {
-  throw new Error("РќСѓР¶РЅРѕ Р·Р°РїРѕР»РЅРёС‚СЊ DISCORD_TOKEN, CLIENT_ID Рё GUILD_ID РІ .env");
+  throw new Error("Нужно заполнить DISCORD_TOKEN, CLIENT_ID и GUILD_ID в .env");
 }
 
 const client = new Client({
@@ -158,21 +158,21 @@ function formatCooldown(ms) {
   const minutes = totalMinutes % 60;
 
   if (hours > 0) {
-    return `${hours} С‡. ${minutes} РјРёРЅ.`;
+    return `${hours} ч. ${minutes} мин.`;
   }
 
-  return `${minutes} РјРёРЅ.`;
+  return `${minutes} мин.`;
 }
 
 function createTaskReviewRow(submissionId) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`task:approve:${submissionId}`)
-      .setLabel("РџСЂРёРЅСЏС‚СЊ Р·Р°РґР°РЅРёРµ")
+      .setLabel("Принять задание")
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId(`task:reject:${submissionId}`)
-      .setLabel("РћС‚РєР»РѕРЅРёС‚СЊ")
+      .setLabel("Отклонить")
       .setStyle(ButtonStyle.Danger)
   );
 }
@@ -181,11 +181,11 @@ function createAdReviewRow(submissionId) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`ad:approve:${submissionId}`)
-      .setLabel("РћРїСѓР±Р»РёРєРѕРІР°С‚СЊ")
+      .setLabel("Опубликовать")
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId(`ad:reject:${submissionId}`)
-      .setLabel("РћС‚РєР»РѕРЅРёС‚СЊ")
+      .setLabel("Отклонить")
       .setStyle(ButtonStyle.Danger)
   );
 }
@@ -194,7 +194,7 @@ function createTaskThreadRow(threadId) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`task:submitthread:${threadId}`)
-      .setLabel("РћС‚РїСЂР°РІРёС‚СЊ РЅР° РїСЂРѕРІРµСЂРєСѓ")
+      .setLabel("Отправить на проверку")
       .setStyle(ButtonStyle.Success)
   );
 }
@@ -289,7 +289,7 @@ client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isChatInputCommand()) {
       if (!interaction.inGuild()) {
-        return interaction.reply({ content: "Р­С‚Р° РєРѕРјР°РЅРґР° СЂР°Р±РѕС‚Р°РµС‚ С‚РѕР»СЊРєРѕ РЅР° СЃРµСЂРІРµСЂРµ.", flags: 64 });
+        return interaction.reply({ content: "Эта команда работает только на сервере.", flags: 64 });
       }
 
       const guild = interaction.guild;
@@ -298,7 +298,7 @@ client.on("interactionCreate", async (interaction) => {
       if (interaction.commandName === "setup-server") {
         if (!member.permissions.has(PermissionFlagsBits.ManageGuild)) {
           return interaction.reply({
-            content: "Р”Р»СЏ СЌС‚РѕР№ РєРѕРјР°РЅРґС‹ РЅСѓР¶РЅРѕ РїСЂР°РІРѕ `РЈРїСЂР°РІР»СЏС‚СЊ СЃРµСЂРІРµСЂРѕРј`.",
+            content: "Для этой команды нужно право `Управлять сервером`.",
             flags: 64
           });
         }
@@ -310,14 +310,14 @@ client.on("interactionCreate", async (interaction) => {
         const result = await setupServer(guild, interaction.member);
 
         return interaction.editReply({
-          content: `Ro Create РЅР°СЃС‚СЂРѕРµРЅ.\n${result.instructions.join("\n")}`
+          content: `Ro Create настроен.\n${result.instructions.join("\n")}`
         });
       }
 
       if (interaction.commandName === "cleanup-bot") {
         if (!member.permissions.has(PermissionFlagsBits.ManageGuild)) {
           return interaction.reply({
-            content: "Р”Р»СЏ СЌС‚РѕР№ РєРѕРјР°РЅРґС‹ РЅСѓР¶РЅРѕ РїСЂР°РІРѕ `РЈРїСЂР°РІР»СЏС‚СЊ СЃРµСЂРІРµСЂРѕРј`.",
+            content: "Для этой команды нужно право `Управлять сервером`.",
             flags: 64
           });
         }
@@ -330,15 +330,15 @@ client.on("interactionCreate", async (interaction) => {
 
         return interaction.editReply({
           content: removed.length > 0
-            ? `РЇ СѓР±СЂР°Р» СЃС‚Р°СЂС‹Рµ Р±РѕС‚СЃРєРёРµ РєР°РЅР°Р»С‹ Рё РєР°С‚РµРіРѕСЂРёРё: ${removed.join(", ")}`
-            : "РЇ РЅРµ РЅР°С€РµР» СЃС‚Р°СЂС‹С… Р±РѕС‚СЃРєРёС… РєР°РЅР°Р»РѕРІ, РєРѕС‚РѕСЂС‹Рµ РјРѕР¶РЅРѕ Р±РµР·РѕРїР°СЃРЅРѕ СѓРґР°Р»РёС‚СЊ."
+            ? `Я убрал старые ботские каналы и категории: ${removed.join(", ")}`
+            : "Я не нашел старых ботских каналов, которые можно безопасно удалить."
         });
       }
 
       if (interaction.commandName === "balance") {
         const userState = withState((state) => ensureUser(state, guild.id, interaction.user));
         return interaction.reply({
-          content: `РЈ С‚РµР±СЏ СЃРµР№С‡Р°СЃ \`${userState.coins}\` РјРѕРЅРµС‚.`,
+          content: `У тебя сейчас \`${userState.coins}\` монет.`,
           flags: 64
         });
       }
@@ -346,13 +346,13 @@ client.on("interactionCreate", async (interaction) => {
       if (interaction.commandName === "profile") {
         const userState = withState((state) => ensureUser(state, guild.id, interaction.user));
         const embed = new EmbedBuilder()
-          .setTitle(`РџСЂРѕС„РёР»СЊ ${interaction.user.username}`)
+          .setTitle(`Профиль ${interaction.user.username}`)
           .setColor(0x3b82f6)
           .addFields(
-            { name: "РњРѕРЅРµС‚С‹", value: String(userState.coins), inline: true },
-            { name: "Р РµРїСѓС‚Р°С†РёСЏ", value: String(userState.reputation), inline: true },
-            { name: "РџСЂРёРЅСЏС‚Рѕ Р·Р°РґР°РЅРёР№", value: String(userState.acceptedTasks), inline: true },
-            { name: "РћРїСѓР±Р»РёРєРѕРІР°РЅРѕ РѕР±СЉСЏРІР»РµРЅРёР№", value: String(userState.acceptedAds), inline: true }
+            { name: "Монеты", value: String(userState.coins), inline: true },
+            { name: "Репутация", value: String(userState.reputation), inline: true },
+            { name: "Принято заданий", value: String(userState.acceptedTasks), inline: true },
+            { name: "Опубликовано объявлений", value: String(userState.acceptedAds), inline: true }
           );
 
         return interaction.reply({ embeds: [embed], flags: 64 });
@@ -378,13 +378,13 @@ client.on("interactionCreate", async (interaction) => {
 
         if (!result.ok) {
           return interaction.reply({
-            content: `Р•Р¶РµРґРЅРµРІРЅС‹Р№ Р±РѕРЅСѓСЃ СѓР¶Рµ РїРѕР»СѓС‡РµРЅ. Р’РѕР·РІСЂР°С‰Р°Р№СЃСЏ С‡РµСЂРµР· ${formatCooldown(result.remaining)}.`,
+            content: `Ежедневный бонус уже получен. Возвращайся через ${formatCooldown(result.remaining)}.`,
             flags: 64
           });
         }
 
         return interaction.reply({
-          content: `Р•Р¶РµРґРЅРµРІРЅС‹Р№ Р±РѕРЅСѓСЃ РїРѕР»СѓС‡РµРЅ: \`+${reward}\` РјРѕРЅРµС‚. РќРѕРІС‹Р№ Р±Р°Р»Р°РЅСЃ: \`${result.coins}\`.`,
+          content: `Ежедневный бонус получен: \`+${reward}\` монет. Новый баланс: \`${result.coins}\`.`,
           flags: 64
         });
       }
@@ -409,13 +409,13 @@ client.on("interactionCreate", async (interaction) => {
 
         if (!result.ok) {
           return interaction.reply({
-            content: `РџРѕРґСЂР°Р±РѕС‚РєР° РїРѕРєР° РЅР° РєСѓР»РґР°СѓРЅРµ. Р’РѕР·РІСЂР°С‰Р°Р№СЃСЏ С‡РµСЂРµР· ${formatCooldown(result.remaining)}.`,
+            content: `Подработка пока на кулдауне. Возвращайся через ${formatCooldown(result.remaining)}.`,
             flags: 64
           });
         }
 
         return interaction.reply({
-          content: `РўС‹ РїРѕСЂР°Р±РѕС‚Р°Р» Рё Р·Р°СЂР°Р±РѕС‚Р°Р» \`+${result.reward}\` РјРѕРЅРµС‚. РўРµРїРµСЂСЊ Сѓ С‚РµР±СЏ \`${result.coins}\`.`,
+          content: `Ты поработал и заработал \`+${result.reward}\` монет. Теперь у тебя \`${result.coins}\`.`,
           flags: 64
         });
       }
@@ -484,7 +484,7 @@ client.on("interactionCreate", async (interaction) => {
 
         if (!reviewChannel) {
           return interaction.reply({
-            content: "РљР°РЅР°Р» РїСЂРѕРІРµСЂРєРё РѕР±СЉСЏРІР»РµРЅРёР№ РЅРµ РЅР°Р№РґРµРЅ. РЎРЅР°С‡Р°Р»Р° РІС‹РїРѕР»РЅРё `/setup-server`.",
+            content: "Канал проверки объявлений не найден. Сначала выполни `/setup-server`.",
             flags: 64
           });
         }
@@ -518,20 +518,20 @@ client.on("interactionCreate", async (interaction) => {
 
         if (!result.ok) {
           return interaction.reply({
-            content: `Р”Р»СЏ РїСѓР±Р»РёРєР°С†РёРё РЅСѓР¶РЅРѕ \`${announcementCost}\` РјРѕРЅРµС‚. РЎРµР№С‡Р°СЃ Сѓ С‚РµР±СЏ \`${result.coins}\`.`,
+            content: `Для публикации нужно \`${announcementCost}\` монет. Сейчас у тебя \`${result.coins}\`.`,
             flags: 64
           });
         }
 
         const embed = new EmbedBuilder()
-          .setTitle(`РћР±СЉСЏРІР»РµРЅРёРµ РЅР° РјРѕРґРµСЂР°С†РёСЋ #${result.record.id}`)
+          .setTitle(`Объявление на модерацию #${result.record.id}`)
           .setColor(0x3b82f6)
           .setDescription(result.record.description)
           .addFields(
-            { name: "РђРІС‚РѕСЂ", value: `<@${interaction.user.id}>`, inline: true },
-            { name: "РљР°С‚РµРіРѕСЂРёСЏ", value: category, inline: true },
-            { name: "РћРїР»Р°С‚Р°", value: payment, inline: true },
-            { name: "РЎРїРёСЃР°РЅРѕ", value: `${announcementCost} РјРѕРЅРµС‚`, inline: true }
+            { name: "Автор", value: `<@${interaction.user.id}>`, inline: true },
+            { name: "Категория", value: category, inline: true },
+            { name: "Оплата", value: payment, inline: true },
+            { name: "Списано", value: `${announcementCost} монет`, inline: true }
           )
           .setFooter({ text: title });
 
@@ -552,7 +552,7 @@ client.on("interactionCreate", async (interaction) => {
         });
 
         return interaction.reply({
-          content: `РћР±СЉСЏРІР»РµРЅРёРµ РѕС‚РїСЂР°РІР»РµРЅРѕ РЅР° РїСЂРѕРІРµСЂРєСѓ. РЎ Р±Р°Р»Р°РЅСЃР° СЃРїРёСЃР°РЅРѕ \`${announcementCost}\` РјРѕРЅРµС‚, РѕСЃС‚Р°Р»РѕСЃСЊ \`${result.remaining}\`.`,
+          content: `Объявление отправлено на проверку. С баланса списано \`${announcementCost}\` монет, осталось \`${result.remaining}\`.`,
           flags: 64
         });
       }
@@ -568,7 +568,7 @@ client.on("interactionCreate", async (interaction) => {
         });
 
         return interaction.reply({
-          content: `${target} РїРѕР»СѓС‡РёР» \`${amount}\` РјРѕРЅРµС‚. РќРѕРІС‹Р№ Р±Р°Р»Р°РЅСЃ: \`${userState.coins}\`.`,
+          content: `${target} получил \`${amount}\` монет. Новый баланс: \`${userState.coins}\`.`,
           flags: 64
         });
       }
@@ -580,11 +580,11 @@ client.on("interactionCreate", async (interaction) => {
       if (kind === "task" && action === "start") {
         const modal = new ModalBuilder()
           .setCustomId("task-start-modal")
-          .setTitle("РќРѕРІРѕРµ Р·Р°РґР°РЅРёРµ");
+          .setTitle("Новое задание");
 
         const commentInput = new TextInputBuilder()
           .setCustomId("comment")
-          .setLabel("Р§С‚Рѕ С‚С‹ СЃРґРµР»Р°Р»")
+          .setLabel("Что ты сделал")
           .setStyle(TextInputStyle.Paragraph)
           .setRequired(true)
           .setMaxLength(600);
@@ -597,21 +597,21 @@ client.on("interactionCreate", async (interaction) => {
         const verifiedRole = interaction.guild.roles.cache.find((role) => role.name === ROLE_NAMES.verified);
         if (!verifiedRole) {
           return interaction.reply({
-            content: "Р РѕР»СЊ `Р’РµСЂРёС„РёС†РёСЂРѕРІР°РЅ` РїРѕРєР° РЅРµ РЅР°Р№РґРµРЅР°. РЎРЅР°С‡Р°Р»Р° РІС‹РїРѕР»РЅРё `/setup-server`.",
+            content: "Роль `Верифицирован` пока не найдена. Сначала выполни `/setup-server`.",
             flags: 64
           });
         }
 
         if (interaction.member.roles.cache.has(verifiedRole.id)) {
           return interaction.reply({
-            content: "РўС‹ СѓР¶Рµ РїСЂРѕС€РµР» РІРµСЂРёС„РёРєР°С†РёСЋ. Р”РѕР±СЂРѕ РїРѕР¶Р°Р»РѕРІР°С‚СЊ РІ РѕСЃРЅРѕРІРЅРѕР№ СЃРµСЂРІРµСЂ.",
+            content: "Ты уже прошел верификацию. Добро пожаловать в основной сервер.",
             flags: 64
           });
         }
 
-        await interaction.member.roles.add(verifiedRole, "Р’РµСЂРёС„РёРєР°С†РёСЏ С‡РµСЂРµР· РєРЅРѕРїРєСѓ Ro Create");
+        await interaction.member.roles.add(verifiedRole, "Верификация через кнопку Ro Create");
         return interaction.reply({
-          content: `Р“РѕС‚РѕРІРѕ. РўРµР±Рµ РІС‹РґР°РЅР° СЂРѕР»СЊ <@&${verifiedRole.id}>, Рё РѕСЃРЅРѕРІРЅС‹Рµ РєР°РЅР°Р»С‹ СѓР¶Рµ РѕС‚РєСЂС‹С‚С‹.`,
+          content: `Готово. Тебе выдана роль <@&${verifiedRole.id}>, и основные каналы уже открыты.`,
           flags: 64
         });
       }
@@ -622,14 +622,14 @@ client.on("interactionCreate", async (interaction) => {
 
         if (!draft) {
           return interaction.reply({
-            content: "Р§РµСЂРЅРѕРІРёРє СЌС‚РѕР№ РѕС‚РїСЂР°РІРєРё СѓР¶Рµ Р·Р°РєСЂС‹С‚ РёР»Рё РЅРµ РЅР°Р№РґРµРЅ.",
+            content: "Черновик этой отправки уже закрыт или не найден.",
             flags: 64
           });
         }
 
         if (draft.userId !== interaction.user.id && !hasTaskReviewerRole(interaction.member)) {
           return interaction.reply({
-            content: "Р­С‚Р° РІРµС‚РєР° РЅРµ РїСЂРёРЅР°РґР»РµР¶РёС‚ С‚РµР±Рµ.",
+            content: "Эта ветка не принадлежит тебе.",
             flags: 64
           });
         }
@@ -664,7 +664,7 @@ client.on("interactionCreate", async (interaction) => {
         const reviewChannel = await findManagedChannel(interaction.guild, "taskReview");
         if (!reviewChannel) {
           return interaction.reply({
-            content: "РљР°РЅР°Р» РїСЂРѕРІРµСЂРєРё Р·Р°РґР°РЅРёР№ РЅРµ РЅР°Р№РґРµРЅ. РЎРЅР°С‡Р°Р»Р° РІС‹РїРѕР»РЅРё `/setup-server`.",
+            content: "Канал проверки заданий не найден. Сначала выполни `/setup-server`.",
             flags: 64
           });
         }
@@ -700,22 +700,22 @@ client.on("interactionCreate", async (interaction) => {
 
         if (!submission) {
           return interaction.reply({
-            content: "Р§РµСЂРЅРѕРІРёРє СЌС‚РѕР№ РѕС‚РїСЂР°РІРєРё СѓР¶Рµ Р·Р°РєСЂС‹С‚.",
+            content: "Черновик этой отправки уже закрыт.",
             flags: 64
           });
         }
 
         const embed = new EmbedBuilder()
-          .setTitle(`РџСЂРѕРІРµСЂРєР° Р·Р°РґР°РЅРёСЏ #${submission.id}`)
+          .setTitle(`Проверка задания #${submission.id}`)
           .setColor(0xf59e0b)
           .setDescription(submission.comment)
           .addFields(
-            { name: "РЈС‡Р°СЃС‚РЅРёРє", value: `<@${submission.userId}>`, inline: true },
-            { name: "Р—Р°РґР°РЅРёРµ", value: submission.taskTitle, inline: true },
-            { name: "РќР°РіСЂР°РґР°", value: `${submission.reward} РјРѕРЅРµС‚`, inline: true },
-            { name: "РњРµРґРёР°", value: submissionMediaFields(submission) }
+            { name: "Участник", value: `<@${submission.userId}>`, inline: true },
+            { name: "Задание", value: submission.taskTitle, inline: true },
+            { name: "Награда", value: `${submission.reward} монет`, inline: true },
+            { name: "Медиа", value: submissionMediaFields(submission) }
           )
-          .setFooter({ text: `ID Р·Р°СЏРІРєРё: ${submission.id}` });
+          .setFooter({ text: `ID заявки: ${submission.id}` });
 
         if (submission.mediaContentType?.startsWith("image/")) {
           embed.setImage(submission.mediaUrl);
@@ -733,11 +733,11 @@ client.on("interactionCreate", async (interaction) => {
           }
         });
 
-        await thread.send(`Р“РѕС‚РѕРІРѕ. РЇ РѕС‚РїСЂР°РІРёР» С‚РІРѕСЋ СЂР°Р±РѕС‚Сѓ РЅР° РїСЂРѕРІРµСЂРєСѓ. РќР°РіСЂР°РґР° Р·Р° СЌС‚Рѕ Р·Р°РґР°РЅРёРµ: ${submission.reward} РјРѕРЅРµС‚.`).catch(() => null);
+        await thread.send(`Готово. Я отправил твою работу на проверку. Награда за это задание: ${submission.reward} монет.`).catch(() => null);
         await thread.setArchived(true).catch(() => null);
 
         return interaction.reply({
-          content: "Р—Р°СЏРІРєР° РѕС‚РїСЂР°РІР»РµРЅР° РЅР° РїСЂРѕРІРµСЂРєСѓ.",
+          content: "Заявка отправлена на проверку.",
           flags: 64
         });
       }
@@ -746,12 +746,12 @@ client.on("interactionCreate", async (interaction) => {
 
       if (kind === "task") {
         if (!hasTaskReviewerRole(interaction.member)) {
-          return interaction.reply({ content: "РЈ С‚РµР±СЏ РЅРµС‚ РїСЂР°РІ РЅР° РїСЂРѕРІРµСЂРєСѓ Р·Р°РґР°РЅРёР№.", flags: 64 });
+          return interaction.reply({ content: "У тебя нет прав на проверку заданий.", flags: 64 });
         }
 
         const submission = state.taskSubmissions[submissionId];
         if (!submission || submission.status !== "pending") {
-          return interaction.reply({ content: "Р­С‚Р° Р·Р°СЏРІРєР° СѓР¶Рµ РѕР±СЂР°Р±РѕС‚Р°РЅР°.", flags: 64 });
+          return interaction.reply({ content: "Эта заявка уже обработана.", flags: 64 });
         }
 
         if (action === "approve") {
@@ -773,17 +773,17 @@ client.on("interactionCreate", async (interaction) => {
           });
 
           if (!result) {
-            return interaction.reply({ content: "Р­С‚Р° Р·Р°СЏРІРєР° СѓР¶Рµ РѕР±СЂР°Р±РѕС‚Р°РЅР°.", flags: 64 });
+            return interaction.reply({ content: "Эта заявка уже обработана.", flags: 64 });
           }
 
           const user = await client.users.fetch(result.current.userId).catch(() => null);
           await user?.send(
-            `РўРІРѕРµ РµР¶РµРґРЅРµРІРЅРѕРµ Р·Р°РґР°РЅРёРµ #${result.current.id} РїСЂРёРЅСЏС‚Рѕ. РќР°С‡РёСЃР»РµРЅРѕ ${result.current.reward} РјРѕРЅРµС‚.`
+            `Твое ежедневное задание #${result.current.id} принято. Начислено ${result.current.reward} монет.`
           ).catch(() => null);
 
           const approvedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
             .setColor(0x22c55e)
-            .addFields({ name: "РЎС‚Р°С‚СѓСЃ", value: `РџСЂРёРЅСЏС‚Рѕ РјРѕРґРµСЂР°С‚РѕСЂРѕРј <@${interaction.user.id}>` });
+            .addFields({ name: "Статус", value: `Принято модератором <@${interaction.user.id}>` });
 
           return interaction.update({ embeds: [approvedEmbed], components: [] });
         }
@@ -791,11 +791,11 @@ client.on("interactionCreate", async (interaction) => {
         if (action === "reject") {
           const modal = new ModalBuilder()
             .setCustomId(`task-reject-modal:${submissionId}`)
-            .setTitle("РџСЂРёС‡РёРЅР° РѕС‚РєР»РѕРЅРµРЅРёСЏ");
+            .setTitle("Причина отклонения");
 
           const reasonInput = new TextInputBuilder()
             .setCustomId("reason")
-            .setLabel("РџРѕС‡РµРјСѓ Р·Р°СЏРІРєР° РѕС‚РєР»РѕРЅРµРЅР°")
+            .setLabel("Почему заявка отклонена")
             .setStyle(TextInputStyle.Paragraph)
             .setRequired(true)
             .setMaxLength(400);
@@ -807,19 +807,19 @@ client.on("interactionCreate", async (interaction) => {
 
       if (kind === "ad") {
         if (!hasAdReviewerRole(interaction.member)) {
-          return interaction.reply({ content: "РЈ С‚РµР±СЏ РЅРµС‚ РїСЂР°РІ РЅР° РїСЂРѕРІРµСЂРєСѓ РѕР±СЉСЏРІР»РµРЅРёР№.", flags: 64 });
+          return interaction.reply({ content: "У тебя нет прав на проверку объявлений.", flags: 64 });
         }
 
         const submission = state.adSubmissions[submissionId];
         if (!submission || submission.status !== "pending") {
-          return interaction.reply({ content: "Р­С‚Рѕ РѕР±СЉСЏРІР»РµРЅРёРµ СѓР¶Рµ РѕР±СЂР°Р±РѕС‚Р°РЅРѕ.", flags: 64 });
+          return interaction.reply({ content: "Это объявление уже обработано.", flags: 64 });
         }
 
         if (action === "approve") {
           const adsChannel = await findManagedChannel(interaction.guild, "ads");
           if (!adsChannel) {
             return interaction.reply({
-              content: "РљР°РЅР°Р» РѕР±СЉСЏРІР»РµРЅРёР№ РЅРµ РЅР°Р№РґРµРЅ. РЎРЅР°С‡Р°Р»Р° РІС‹РїРѕР»РЅРё `/setup-server`.",
+              content: "Канал объявлений не найден. Сначала выполни `/setup-server`.",
               flags: 64
             });
           }
@@ -840,7 +840,7 @@ client.on("interactionCreate", async (interaction) => {
           });
 
           if (!result) {
-            return interaction.reply({ content: "Р­С‚Рѕ РѕР±СЉСЏРІР»РµРЅРёРµ СѓР¶Рµ РѕР±СЂР°Р±РѕС‚Р°РЅРѕ.", flags: 64 });
+            return interaction.reply({ content: "Это объявление уже обработано.", flags: 64 });
           }
 
           const publicEmbed = new EmbedBuilder()
@@ -848,11 +848,11 @@ client.on("interactionCreate", async (interaction) => {
             .setColor(0x3b82f6)
             .setDescription(result.current.description)
             .addFields(
-              { name: "РљР°С‚РµРіРѕСЂРёСЏ", value: result.current.category, inline: true },
-              { name: "РћРїР»Р°С‚Р°", value: result.current.payment, inline: true },
-              { name: "РђРІС‚РѕСЂ", value: `<@${result.current.userId}>`, inline: true }
+              { name: "Категория", value: result.current.category, inline: true },
+              { name: "Оплата", value: result.current.payment, inline: true },
+              { name: "Автор", value: `<@${result.current.userId}>`, inline: true }
             )
-            .setFooter({ text: "РћР±СЉСЏРІР»РµРЅРёРµ Ro Create" });
+            .setFooter({ text: "Объявление Ro Create" });
 
           if (result.current.imageUrl) {
             publicEmbed.setImage(result.current.imageUrl);
@@ -861,11 +861,11 @@ client.on("interactionCreate", async (interaction) => {
           await adsChannel.send({ embeds: [publicEmbed] });
 
           const user = await client.users.fetch(result.current.userId).catch(() => null);
-          await user?.send(`РўРІРѕРµ РѕР±СЉСЏРІР»РµРЅРёРµ #${result.current.id} РѕРґРѕР±СЂРµРЅРѕ Рё РѕРїСѓР±Р»РёРєРѕРІР°РЅРѕ.`).catch(() => null);
+          await user?.send(`Твое объявление #${result.current.id} одобрено и опубликовано.`).catch(() => null);
 
           const approvedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
             .setColor(0x22c55e)
-            .addFields({ name: "РЎС‚Р°С‚СѓСЃ", value: `РћРїСѓР±Р»РёРєРѕРІР°РЅРѕ РјРѕРґРµСЂР°С‚РѕСЂРѕРј <@${interaction.user.id}>` });
+            .addFields({ name: "Статус", value: `Опубликовано модератором <@${interaction.user.id}>` });
 
           return interaction.update({ embeds: [approvedEmbed], components: [] });
         }
@@ -873,11 +873,11 @@ client.on("interactionCreate", async (interaction) => {
         if (action === "reject") {
           const modal = new ModalBuilder()
             .setCustomId(`ad-reject-modal:${submissionId}`)
-            .setTitle("РџСЂРёС‡РёРЅР° РѕС‚РєР»РѕРЅРµРЅРёСЏ РѕР±СЉСЏРІР»РµРЅРёСЏ");
+            .setTitle("Причина отклонения объявления");
 
           const reasonInput = new TextInputBuilder()
             .setCustomId("reason")
-            .setLabel("РџРѕС‡РµРјСѓ РѕР±СЉСЏРІР»РµРЅРёРµ РѕС‚РєР»РѕРЅРµРЅРѕ")
+            .setLabel("Почему объявление отклонено")
             .setStyle(TextInputStyle.Paragraph)
             .setRequired(true)
             .setMaxLength(400);
@@ -908,7 +908,7 @@ client.on("interactionCreate", async (interaction) => {
 
         if (!taskSubmitChannel) {
           return interaction.reply({
-            content: "РљР°РЅР°Р» РѕС‚РїСЂР°РІРєРё Р·Р°РґР°РЅРёР№ РЅРµ РЅР°Р№РґРµРЅ. РЎРЅР°С‡Р°Р»Р° РІС‹РїРѕР»РЅРё `/setup-server`.",
+            content: "Канал отправки заданий не найден. Сначала выполни `/setup-server`.",
             flags: 64
           });
         }
@@ -932,7 +932,7 @@ client.on("interactionCreate", async (interaction) => {
         } catch (error) {
           console.error(error);
           return interaction.reply({
-            content: "Не удалось открыть приватную ветку для задания. Снова выполни `/setup-server`, чтобы бот обновил права канала, и проверь право бота на управление тредами.",
+            content: "�� ������� ������� ��������� ����� ��� �������. ����� ������� `/setup-server`, ����� ��� ������� ����� ������, � ������� ����� ���� �� ���������� �������.",
             flags: 64
           }).catch(() => null);
         }
@@ -964,14 +964,14 @@ client.on("interactionCreate", async (interaction) => {
         });
 
         return interaction.reply({
-          content: `РЇ РѕС‚РєСЂС‹Р» С‚РµР±Рµ РїСЂРёРІР°С‚РЅСѓСЋ РІРµС‚РєСѓ РґР»СЏ Р·Р°РіСЂСѓР·РєРё Р·Р°РґР°РЅРёСЏ: <#${thread.id}>`,
+          content: `Я открыл тебе приватную ветку для загрузки задания: <#${thread.id}>`,
           flags: 64
         });
       }
 
       if (kind === "task-reject-modal") {
         if (!hasTaskReviewerRole(interaction.member)) {
-          return interaction.reply({ content: "РЈ С‚РµР±СЏ РЅРµС‚ РїСЂР°РІ РЅР° РїСЂРѕРІРµСЂРєСѓ Р·Р°РґР°РЅРёР№.", flags: 64 });
+          return interaction.reply({ content: "У тебя нет прав на проверку заданий.", flags: 64 });
         }
 
         const result = withState((mutable) => {
@@ -988,25 +988,25 @@ client.on("interactionCreate", async (interaction) => {
         });
 
         if (!result) {
-          return interaction.reply({ content: "Р­С‚Р° Р·Р°СЏРІРєР° СѓР¶Рµ РѕР±СЂР°Р±РѕС‚Р°РЅР°.", flags: 64 });
+          return interaction.reply({ content: "Эта заявка уже обработана.", flags: 64 });
         }
 
         const user = await client.users.fetch(result.userId).catch(() => null);
-        await user?.send(`РўРІРѕРµ РµР¶РµРґРЅРµРІРЅРѕРµ Р·Р°РґР°РЅРёРµ #${result.id} РѕС‚РєР»РѕРЅРµРЅРѕ. РџСЂРёС‡РёРЅР°: ${reason}`).catch(() => null);
+        await user?.send(`Твое ежедневное задание #${result.id} отклонено. Причина: ${reason}`).catch(() => null);
 
         const embed = new EmbedBuilder()
-          .setTitle(`РџСЂРѕРІРµСЂРєР° Р·Р°РґР°РЅРёСЏ #${result.id}`)
+          .setTitle(`Проверка задания #${result.id}`)
           .setColor(0xef4444)
           .setDescription(result.comment)
           .addFields(
-            { name: "РЈС‡Р°СЃС‚РЅРёРє", value: `<@${result.userId}>`, inline: true },
-            { name: "Р—Р°РґР°РЅРёРµ", value: result.taskTitle, inline: true },
-            { name: "РќР°РіСЂР°РґР°", value: `${result.reward} РјРѕРЅРµС‚`, inline: true },
-            { name: "РњРµРґРёР°", value: submissionMediaFields(result) },
-            { name: "РЎС‚Р°С‚СѓСЃ", value: `РћС‚РєР»РѕРЅРµРЅРѕ РјРѕРґРµСЂР°С‚РѕСЂРѕРј <@${interaction.user.id}>` },
-            { name: "РџСЂРёС‡РёРЅР°", value: reason }
+            { name: "Участник", value: `<@${result.userId}>`, inline: true },
+            { name: "Задание", value: result.taskTitle, inline: true },
+            { name: "Награда", value: `${result.reward} монет`, inline: true },
+            { name: "Медиа", value: submissionMediaFields(result) },
+            { name: "Статус", value: `Отклонено модератором <@${interaction.user.id}>` },
+            { name: "Причина", value: reason }
           )
-          .setFooter({ text: `ID Р·Р°СЏРІРєРё: ${result.id}` });
+          .setFooter({ text: `ID заявки: ${result.id}` });
 
         if (result.mediaContentType?.startsWith("image/")) {
           embed.setImage(result.mediaUrl);
@@ -1014,14 +1014,14 @@ client.on("interactionCreate", async (interaction) => {
 
         await updateStoredReviewMessage(interaction.guild, result, embed);
         return interaction.reply({
-          content: "Р—Р°СЏРІРєР° РѕС‚РєР»РѕРЅРµРЅР°, РїСЂРёС‡РёРЅР° РѕС‚РїСЂР°РІР»РµРЅР° РїРѕР»СЊР·РѕРІР°С‚РµР»СЋ РІ Р›РЎ.",
+          content: "Заявка отклонена, причина отправлена пользователю в ЛС.",
           flags: 64
         });
       }
 
       if (kind === "ad-reject-modal") {
         if (!hasAdReviewerRole(interaction.member)) {
-          return interaction.reply({ content: "РЈ С‚РµР±СЏ РЅРµС‚ РїСЂР°РІ РЅР° РїСЂРѕРІРµСЂРєСѓ РѕР±СЉСЏРІР»РµРЅРёР№.", flags: 64 });
+          return interaction.reply({ content: "У тебя нет прав на проверку объявлений.", flags: 64 });
         }
 
         const result = withState((mutable) => {
@@ -1041,24 +1041,24 @@ client.on("interactionCreate", async (interaction) => {
         });
 
         if (!result) {
-          return interaction.reply({ content: "Р­С‚Рѕ РѕР±СЉСЏРІР»РµРЅРёРµ СѓР¶Рµ РѕР±СЂР°Р±РѕС‚Р°РЅРѕ.", flags: 64 });
+          return interaction.reply({ content: "Это объявление уже обработано.", flags: 64 });
         }
 
         const user = await client.users.fetch(result.userId).catch(() => null);
         await user?.send(
-          `РўРІРѕРµ РѕР±СЉСЏРІР»РµРЅРёРµ #${result.id} РѕС‚РєР»РѕРЅРµРЅРѕ. РњРѕРЅРµС‚С‹ РІРѕР·РІСЂР°С‰РµРЅС‹. РџСЂРёС‡РёРЅР°: ${reason}`
+          `Твое объявление #${result.id} отклонено. Монеты возвращены. Причина: ${reason}`
         ).catch(() => null);
 
         const embed = new EmbedBuilder()
-          .setTitle(`РћР±СЉСЏРІР»РµРЅРёРµ РЅР° РјРѕРґРµСЂР°С†РёСЋ #${result.id}`)
+          .setTitle(`Объявление на модерацию #${result.id}`)
           .setColor(0xef4444)
           .setDescription(result.description)
           .addFields(
-            { name: "РђРІС‚РѕСЂ", value: `<@${result.userId}>`, inline: true },
-            { name: "РљР°С‚РµРіРѕСЂРёСЏ", value: result.category, inline: true },
-            { name: "РћРїР»Р°С‚Р°", value: result.payment, inline: true },
-            { name: "РЎС‚Р°С‚СѓСЃ", value: `РћС‚РєР»РѕРЅРµРЅРѕ РјРѕРґРµСЂР°С‚РѕСЂРѕРј <@${interaction.user.id}>` },
-            { name: "РџСЂРёС‡РёРЅР°", value: reason }
+            { name: "Автор", value: `<@${result.userId}>`, inline: true },
+            { name: "Категория", value: result.category, inline: true },
+            { name: "Оплата", value: result.payment, inline: true },
+            { name: "Статус", value: `Отклонено модератором <@${interaction.user.id}>` },
+            { name: "Причина", value: reason }
           )
           .setFooter({ text: result.title });
 
@@ -1068,7 +1068,7 @@ client.on("interactionCreate", async (interaction) => {
 
         await updateStoredReviewMessage(interaction.guild, result, embed);
         return interaction.reply({
-          content: "РћР±СЉСЏРІР»РµРЅРёРµ РѕС‚РєР»РѕРЅРµРЅРѕ, РјРѕРЅРµС‚С‹ РІРѕР·РІСЂР°С‰РµРЅС‹, Р°РІС‚РѕСЂ СѓРІРµРґРѕРјР»РµРЅ РІ Р›РЎ.",
+          content: "Объявление отклонено, монеты возвращены, автор уведомлен в ЛС.",
           flags: 64
         });
       }
@@ -1082,14 +1082,14 @@ client.on("interactionCreate", async (interaction) => {
 
     if (interaction.deferred || interaction.replied) {
       await interaction.followUp({
-        content: "Р§С‚Рѕ-С‚Рѕ РїРѕС€Р»Рѕ РЅРµ С‚Р°Рє. РџСЂРѕРІРµСЂСЊ РїСЂР°РІР° Р±РѕС‚Р° Рё РЅР°СЃС‚СЂРѕР№РєРё `.env`.",
+        content: "Что-то пошло не так. Проверь права бота и настройки `.env`.",
         flags: 64
       }).catch(() => null);
       return;
     }
 
     await interaction.reply({
-      content: "Р§С‚Рѕ-С‚Рѕ РїРѕС€Р»Рѕ РЅРµ С‚Р°Рє. РџСЂРѕРІРµСЂСЊ РїСЂР°РІР° Р±РѕС‚Р° Рё РЅР°СЃС‚СЂРѕР№РєРё `.env`.",
+      content: "Что-то пошло не так. Проверь права бота и настройки `.env`.",
       flags: 64
     }).catch(() => null);
   }
