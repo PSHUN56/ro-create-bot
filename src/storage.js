@@ -27,10 +27,7 @@ function ensureDataFile() {
   }
 }
 
-function loadState() {
-  ensureDataFile();
-  const raw = fs.readFileSync(DATA_FILE, "utf8");
-  const parsed = JSON.parse(raw);
+function buildState(parsed = {}) {
   return {
     ...defaultState,
     ...parsed,
@@ -44,6 +41,30 @@ function loadState() {
     taskDrafts: parsed.taskDrafts || {},
     taskSubmissions: parsed.taskSubmissions || {},
     adSubmissions: parsed.adSubmissions || {}
+  };
+}
+
+function loadState() {
+  ensureDataFile();
+  const raw = fs.readFileSync(DATA_FILE, "utf8").trim();
+
+  if (!raw) {
+    const state = buildState();
+    fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2), "utf8");
+    return state;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    return buildState(parsed);
+  } catch (error) {
+    const brokenBackup = `${DATA_FILE}.broken-${Date.now()}.json`;
+    fs.writeFileSync(brokenBackup, raw, "utf8");
+
+    const state = buildState();
+    fs.writeFileSync(DATA_FILE, JSON.stringify(state, null, 2), "utf8");
+    console.error(`State file was corrupted and has been reset. Backup saved to ${brokenBackup}`);
+    return state;
   };
 }
 
