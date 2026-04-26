@@ -11,6 +11,8 @@ const {
   roleTemplates,
   managedCategories,
   managedTemplates,
+  legacyCategoryNames,
+  legacyChannelNames,
   buildOverwrites
 } = require("./config/serverTemplate");
 const { loadState, withState } = require("./storage");
@@ -26,12 +28,7 @@ function normalizeName(value) {
   return value.trim().toLowerCase();
 }
 
-function matchesAnyName(name, aliases) {
-  const normalized = normalizeName(name);
-  return aliases.some((alias) => normalizeName(alias) === normalized);
-}
-
-function getGuildArtifacts(state, guildId) {
+function getArtifacts(state, guildId) {
   if (!state.managedArtifacts[guildId]) {
     state.managedArtifacts[guildId] = {
       categories: {},
@@ -42,40 +39,28 @@ function getGuildArtifacts(state, guildId) {
   return state.managedArtifacts[guildId];
 }
 
-function readGuildArtifacts(guildId) {
+function readArtifacts(guildId) {
   return loadState().managedArtifacts[guildId] || { categories: {}, channels: {} };
 }
 
-function rememberManagedCategory(guildId, key, categoryId) {
+function saveCategoryArtifact(guildId, key, id) {
   withState((state) => {
-    const artifacts = getGuildArtifacts(state, guildId);
-    artifacts.categories[key] = categoryId;
+    const artifacts = getArtifacts(state, guildId);
+    artifacts.categories[key] = id;
   });
 }
 
-function rememberManagedChannel(guildId, key, channelId) {
+function saveChannelArtifact(guildId, key, id) {
   withState((state) => {
-    const artifacts = getGuildArtifacts(state, guildId);
-    artifacts.channels[key] = channelId;
+    const artifacts = getArtifacts(state, guildId);
+    artifacts.channels[key] = id;
   });
 }
 
-function clearManagedArtifacts(guildId) {
+function clearArtifacts(guildId) {
   withState((state) => {
     delete state.managedArtifacts[guildId];
   });
-}
-
-function findTrackedCategory(guild, trackedId) {
-  return trackedId ? guild.channels.cache.get(trackedId) || null : null;
-}
-
-function findTrackedChannel(guild, trackedId, expectedType) {
-  const channel = trackedId ? guild.channels.cache.get(trackedId) || null : null;
-  if (!channel || channel.type !== expectedType) {
-    return null;
-  }
-  return channel;
 }
 
 async function ensureRole(guild, template) {
@@ -87,7 +72,7 @@ async function ensureRole(guild, template) {
   return guild.roles.create({
     name: template.name,
     color: template.color,
-    reason: "Ro Create bot setup"
+    reason: "Ro Create clean setup"
   });
 }
 
@@ -117,152 +102,31 @@ async function ensureRoleHierarchy(guild, roleMap) {
   }
 }
 
-async function deleteDuplicateManagedCategories(guild, template, keeperId) {
-  const duplicates = guild.channels.cache.filter(
-    (channel) =>
-      channel.id !== keeperId
-      && channel.type === ChannelType.GuildCategory
-      && matchesAnyName(channel.name, [template.name, ...template.aliases])
-  );
-
-  const removed = [];
-  for (const duplicate of duplicates.values()) {
-    const children = guild.channels.cache.filter((channel) => channel.parentId === duplicate.id);
-    for (const child of children.values()) {
-      await child.delete("Remove duplicate Ro Create bot category children").catch(() => null);
-      removed.push(`#${child.name}`);
-    }
-
-    removed.push(duplicate.name);
-    await duplicate.delete("Remove duplicate Ro Create bot category").catch(() => null);
+async function assignFounderRole(ownerMember, founderRole) {
+  if (!founderRole || ownerMember.roles.cache.has(founderRole.id)) {
+    return;
   }
 
-  return removed;
-}
-
-function findManagedCategory(guild, template) {
-  return guild.channels.cache.find(
-    (channel) =>
-      channel.type === ChannelType.GuildCategory
-      && matchesAnyName(channel.name, [template.name, ...template.aliases])
-  );
-}
-
-function findManagedChannel(guild, template) {
-  return guild.channels.cache.find(
-    (channel) =>
-      channel.type === template.type
-      && matchesAnyName(channel.name, [template.name, ...template.aliases])
-  );
-}
-
-async function ensureCategory(guild, template, overwriteOptions, trackedId = null) {
-  const existing = findTrackedCategory(guild, trackedId) || findManagedCategory(guild, template);
-  const permissionOverwrites = buildOverwrites({
-    ...overwriteOptions,
-    visibility: "staff",
-    memberCanSend: false
-  });
-
-  if (existing) {
-    await existing.edit({
-      name: template.name,
-      permissionOverwrites,
-      reason: "Ro Create bot setup"
-    }).catch(() => null);
-    await deleteDuplicateManagedCategories(guild, template, existing.id);
-    rememberManagedCategory(guild.id, template.key, existing.id);
-    return existing;
-  }
-
-  const category = await guild.channels.create({
-    name: template.name,
-    type: ChannelType.GuildCategory,
-    permissionOverwrites,
-    reason: "Ro Create bot setup"
-  });
-  await deleteDuplicateManagedCategories(guild, template, category.id);
-  rememberManagedCategory(guild.id, template.key, category.id);
-  return category;
-}
-
-async function deleteDuplicateManagedChannels(guild, template, keeperId) {
-  const duplicates = guild.channels.cache.filter(
-    (channel) =>
-      channel.id !== keeperId
-      && channel.type === template.type
-      && matchesAnyName(channel.name, [template.name, ...template.aliases])
-  );
-
-  const removed = [];
-  for (const duplicate of duplicates.values()) {
-    removed.push(`#${duplicate.name}`);
-    await duplicate.delete("Remove duplicate Ro Create bot channel").catch(() => null);
-  }
-
-  return removed;
-}
-
-async function ensureChannel(guild, template, categoryMap, overwriteOptions, trackedId = null) {
-  const existing = findTrackedChannel(guild, trackedId, template.type) || findManagedChannel(guild, template);
-  const parent = categoryMap[template.category];
-  const permissionOverwrites = buildOverwrites({
-    ...overwriteOptions,
-    visibility: template.visibility,
-    memberCanSend: template.memberCanSend,
-    allowThreadMessages: template.allowThreadMessages,
-    allowPrivateThreads: template.allowPrivateThreads
-  });
-
-  if (existing) {
-    await existing.edit({
-      name: template.name,
-      parent: parent.id,
-      permissionOverwrites,
-      reason: "Ro Create bot setup"
-    }).catch(() => null);
-
-    const removedDuplicates = await deleteDuplicateManagedChannels(guild, template, existing.id);
-    rememberManagedChannel(guild.id, template.key, existing.id);
-    return { channel: existing, removedDuplicates };
-  }
-
-  const channel = await guild.channels.create({
-    name: template.name,
-    type: template.type,
-    parent: parent.id,
-    permissionOverwrites,
-    reason: "Ro Create bot setup"
-  });
-
-  rememberManagedChannel(guild.id, template.key, channel.id);
-  return { channel, removedDuplicates: [] };
-}
-
-function isManagedCategory(channel) {
-  return channel.type === ChannelType.GuildCategory
-    && managedCategories.some((template) => matchesAnyName(channel.name, [template.name, ...template.aliases]));
-}
-
-function isManagedChannel(channel) {
-  return managedTemplates.some((template) =>
-    channel.type === template.type
-    && matchesAnyName(channel.name, [template.name, ...template.aliases])
-  );
+  await ownerMember.roles.add(founderRole, "Ro Create clean setup").catch(() => null);
 }
 
 async function cleanupManagedArtifacts(guild) {
   await guild.channels.fetch();
 
   const removed = [];
-  const artifacts = readGuildArtifacts(guild.id);
-  const managedCategoryIds = new Set(
-    guild.channels.cache.filter((channel) => isManagedCategory(channel)).map((channel) => channel.id)
-  );
-  Object.values(artifacts.categories || {}).forEach((id) => managedCategoryIds.add(id));
-
+  const artifacts = readArtifacts(guild.id);
   const trackedChannelIds = new Set(Object.values(artifacts.channels || {}));
   const trackedCategoryIds = new Set(Object.values(artifacts.categories || {}));
+
+  const categoriesToDelete = guild.channels.cache.filter((channel) =>
+    channel.type === ChannelType.GuildCategory
+    && (
+      trackedCategoryIds.has(channel.id)
+      || legacyCategoryNames.map(normalizeName).includes(normalizeName(channel.name))
+    )
+  );
+
+  const categoryIds = new Set(categoriesToDelete.map((channel) => channel.id));
 
   const channelsToDelete = guild.channels.cache.filter((channel) => {
     if (channel.type === ChannelType.GuildCategory) {
@@ -273,51 +137,74 @@ async function cleanupManagedArtifacts(guild) {
       return true;
     }
 
-    if (isManagedChannel(channel)) {
+    if (channel.parentId && categoryIds.has(channel.parentId)) {
       return true;
     }
 
-    return channel.parentId && managedCategoryIds.has(channel.parentId);
+    return legacyChannelNames.map(normalizeName).includes(normalizeName(channel.name));
   });
 
   for (const channel of channelsToDelete.values()) {
     removed.push(`#${channel.name}`);
-    await channel.delete("Cleanup Ro Create bot channels").catch(() => null);
+    await channel.delete("Remove old Ro Create bot channel").catch(() => null);
   }
 
-  const categories = guild.channels.cache.filter((channel) => isManagedCategory(channel));
-  const allCategories = new Map();
-  for (const category of categories.values()) {
-    allCategories.set(category.id, category);
-  }
-  for (const categoryId of trackedCategoryIds) {
-    const category = guild.channels.cache.get(categoryId);
-    if (category?.type === ChannelType.GuildCategory) {
-      allCategories.set(category.id, category);
-    }
-  }
-
-  for (const category of allCategories.values()) {
+  for (const category of categoriesToDelete.values()) {
     const children = guild.channels.cache.filter((channel) => channel.parentId === category.id);
     if (children.size === 0) {
       removed.push(category.name);
-      await category.delete("Cleanup Ro Create bot categories").catch(() => null);
+      await category.delete("Remove old Ro Create bot category").catch(() => null);
     }
   }
 
-  clearManagedArtifacts(guild.id);
+  clearArtifacts(guild.id);
   return removed;
+}
+
+async function ensureCategory(guild, template, overwriteOptions) {
+  const channel = await guild.channels.create({
+    name: template.name,
+    type: ChannelType.GuildCategory,
+    permissionOverwrites: buildOverwrites({
+      ...overwriteOptions,
+      visibility: "staff",
+      memberCanSend: false
+    }),
+    reason: "Ro Create clean setup"
+  });
+
+  saveCategoryArtifact(guild.id, template.key, channel.id);
+  return channel;
+}
+
+async function ensureChannel(guild, template, categoryMap, overwriteOptions) {
+  const channel = await guild.channels.create({
+    name: template.name,
+    type: template.type,
+    parent: categoryMap[template.category].id,
+    permissionOverwrites: buildOverwrites({
+      ...overwriteOptions,
+      visibility: template.visibility,
+      memberCanSend: template.memberCanSend,
+      allowThreadMessages: template.allowThreadMessages,
+      allowPrivateThreads: template.allowPrivateThreads
+    }),
+    reason: "Ro Create clean setup"
+  });
+
+  saveChannelArtifact(guild.id, template.key, channel.id);
+  return { channel, removedDuplicates: [] };
 }
 
 async function ensureVerificationMessage(channel, verifiedRole) {
   const embed = new EmbedBuilder()
     .setColor(0x22c55e)
-    .setTitle("Верификация Ro Create")
+    .setTitle("Ro Create | Верификация")
     .setDescription(
       [
         "Добро пожаловать в Ro Create.",
         "",
-        "Нажми кнопку ниже, чтобы получить доступ к серверу и рабочим разделам.",
+        "Нажми кнопку ниже, чтобы получить доступ к основным разделам сервера.",
         verifiedRole ? `После подтверждения бот выдаст роль <@&${verifiedRole.id}>.` : ""
       ].filter(Boolean).join("\n")
     );
@@ -329,28 +216,20 @@ async function ensureVerificationMessage(channel, verifiedRole) {
       .setStyle(ButtonStyle.Success)
   );
 
-  const recent = await channel.messages.fetch({ limit: 10 }).catch(() => null);
-  const existing = recent?.find((message) => message.author.id === channel.guild.members.me.id);
-
-  if (existing) {
-    await existing.edit({ content: "", embeds: [embed], components: [row] });
-    return;
-  }
-
   await channel.send({ embeds: [embed], components: [row] });
 }
 
 async function ensureTaskPanel(channel) {
   const embed = new EmbedBuilder()
     .setColor(0x3b82f6)
-    .setTitle("Отправка задания")
+    .setTitle("Ro Create | Сдача задания")
     .setDescription(
       [
         "В этот канал писать нельзя.",
         "",
         "Нажми кнопку ниже.",
         "Бот попросит комментарий, потом откроет приватную ветку.",
-        "В этой ветке нужно будет приложить фото и видео, а потом отправить работу на проверку."
+        "В ветке нужно будет приложить фото и видео, а потом отправить работу на проверку."
       ].join("\n")
     );
 
@@ -361,29 +240,14 @@ async function ensureTaskPanel(channel) {
       .setStyle(ButtonStyle.Primary)
   );
 
-  const recent = await channel.messages.fetch({ limit: 10 }).catch(() => null);
-  const existing = recent?.find((message) => message.author.id === channel.guild.members.me.id);
-
-  if (existing) {
-    await existing.edit({ content: "", embeds: [embed], components: [row] });
-    return;
-  }
-
   await channel.send({ embeds: [embed], components: [row] });
-}
-
-async function assignFounderRole(ownerMember, founderRole) {
-  if (!founderRole || ownerMember.roles.cache.has(founderRole.id)) {
-    return;
-  }
-
-  await ownerMember.roles.add(founderRole, "Ro Create bot setup").catch(() => null);
 }
 
 async function setupServer(guild, ownerMember) {
   await guild.channels.fetch();
   await guild.roles.fetch();
-  const artifacts = readGuildArtifacts(guild.id);
+
+  const removedBeforeSetup = await cleanupManagedArtifacts(guild);
 
   const roleMap = {};
   for (const template of roleTemplates) {
@@ -404,41 +268,27 @@ async function setupServer(guild, ownerMember) {
 
   const categoryMap = {};
   for (const template of managedCategories) {
-    categoryMap[template.key] = await ensureCategory(
-      guild,
-      template,
-      overwriteOptions,
-      artifacts.categories?.[template.key] || null
-    );
+    categoryMap[template.key] = await ensureCategory(guild, template, overwriteOptions);
   }
 
   const channelMap = {};
-  const removedDuplicates = [];
   for (const template of managedTemplates) {
-    const result = await ensureChannel(
-      guild,
-      template,
-      categoryMap,
-      overwriteOptions,
-      artifacts.channels?.[template.key] || null
-    );
-    channelMap[template.key] = result;
-    removedDuplicates.push(...result.removedDuplicates);
+    channelMap[template.key] = await ensureChannel(guild, template, categoryMap, overwriteOptions);
   }
 
   await ensureVerificationMessage(channelMap.verification.channel, roleMap[ROLE_NAMES.verified]);
   await ensureTaskPanel(channelMap.taskSubmit.channel);
 
   const instructions = [
-    `Созданы приватные каналы Ro Create в категориях ${managedCategories.map((entry) => `**${entry.name}**`).join(", ")}.`,
-    `Верификация находится в <#${channelMap.verification.channel.id}>.`,
-    `Задания публикуются в <#${channelMap.tasks.channel.id}>, а отправка идёт через кнопку в <#${channelMap.taskSubmit.channel.id}>.`,
-    `Проверка заданий идёт в <#${channelMap.taskReview.channel.id}>, проверка объявлений — в <#${channelMap.adReview.channel.id}>.`,
-    `Канал объявлений для публикаций: <#${channelMap.ads.channel.id}>.`
+    `Готово. Я полностью пересобрал структуру Ro Create в приватном стиле.`,
+    `Стартовые каналы: <#${channelMap.news.channel.id}> и <#${channelMap.verification.channel.id}>.`,
+    `Задания: <#${channelMap.tasks.channel.id}> и <#${channelMap.taskSubmit.channel.id}>.`,
+    `Биржа: <#${channelMap.ads.channel.id}>.`,
+    `Staff-проверка: <#${channelMap.taskReview.channel.id}> и <#${channelMap.adReview.channel.id}>.`
   ];
 
-  if (removedDuplicates.length > 0) {
-    instructions.push(`Удалены дубли ботских каналов: ${removedDuplicates.join(", ")}.`);
+  if (removedBeforeSetup.length > 0) {
+    instructions.push(`Перед пересборкой я удалил старые ботские объекты: ${removedBeforeSetup.join(", ")}.`);
   }
 
   return { roleMap, channelMap, instructions };
