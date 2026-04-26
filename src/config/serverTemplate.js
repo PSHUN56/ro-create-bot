@@ -1,11 +1,19 @@
 const { ChannelType, PermissionFlagsBits } = require("discord.js");
 
+const ROLE_NAMES = {
+  founder: "Основатель",
+  admin: "Администрация",
+  taskReviewer: "Проверяющий задания",
+  adReviewer: "Модератор объявлений",
+  verified: "Верифицирован"
+};
+
 const roleTemplates = [
-  { name: "Основатель", color: 0xf59e0b },
-  { name: "Администрация", color: 0xef4444 },
-  { name: "Проверяющий задания", color: 0x22c55e },
-  { name: "Модератор объявлений", color: 0x3b82f6 },
-  { name: "Верифицирован", color: 0x38bdf8 }
+  { name: ROLE_NAMES.founder, color: 0xf59e0b },
+  { name: ROLE_NAMES.admin, color: 0xef4444 },
+  { name: ROLE_NAMES.taskReviewer, color: 0x22c55e },
+  { name: ROLE_NAMES.adReviewer, color: 0x3b82f6 },
+  { name: ROLE_NAMES.verified, color: 0x38bdf8 }
 ];
 
 const managedTemplates = [
@@ -14,49 +22,63 @@ const managedTemplates = [
     baseName: "новости",
     aliases: ["новости", "news"],
     type: ChannelType.GuildText,
-    visibility: "public"
+    visibility: "public",
+    placement: "publicHub",
+    icon: "📢"
   },
   {
     key: "verification",
     baseName: "верификация",
     aliases: ["верификация", "verification", "verify"],
     type: ChannelType.GuildText,
-    visibility: "public"
+    visibility: "public",
+    placement: "publicHub",
+    icon: "✅"
   },
   {
     key: "ads",
     baseName: "объявления",
     aliases: ["объявления", "ads", "announcements"],
     type: ChannelType.GuildText,
-    visibility: "verified"
+    visibility: "verified",
+    placement: "marketHub",
+    icon: "📢"
   },
   {
     key: "tasks",
-    baseName: "задания",
-    aliases: ["задания", "ежедневные-задания", "tasks"],
+    baseName: "ежедневные-задания",
+    aliases: ["ежедневные-задания", "задания", "tasks"],
     type: ChannelType.GuildText,
-    visibility: "verified"
+    visibility: "verified",
+    placement: "taskHub",
+    icon: "🎯"
   },
   {
     key: "taskSubmit",
-    baseName: "отправка-заданий",
-    aliases: ["отправка-заданий", "сдать-задание", "task-submit"],
+    baseName: "отправить-задание",
+    aliases: ["отправить-задание", "сдать-задание", "task-submit"],
     type: ChannelType.GuildText,
-    visibility: "verified"
+    visibility: "verified",
+    placement: "taskHub",
+    icon: "📩"
   },
   {
     key: "taskReview",
     baseName: "проверка-заданий",
     aliases: ["проверка-заданий", "task-review"],
     type: ChannelType.GuildText,
-    visibility: "staff"
+    visibility: "staff",
+    placement: "staffHub",
+    icon: "🛡️"
   },
   {
     key: "adReview",
     baseName: "проверка-объявлений",
     aliases: ["проверка-объявлений", "ad-review"],
     type: ChannelType.GuildText,
-    visibility: "staff"
+    visibility: "staff",
+    placement: "staffHub",
+    icon: "🛡️"
   }
 ];
 
@@ -65,20 +87,39 @@ const obsoleteManagedTemplates = [
   { aliases: ["портфолио", "portfolio"] },
   { aliases: ["devlog", "девлог"] },
   { aliases: ["работа-и-монеты", "монеты", "экономика"] },
-  { aliases: ["инструкция-бота", "инструкция", "bot-guide"] }
+  { aliases: ["инструкция-бота", "инструкция", "bot-guide"] },
+  { aliases: ["ro-create-система", "система-ro-create"] }
 ];
 
 const legacyManagedCategories = [
+  "Ro Create | Система",
+  "🤖 │ система",
   "Информация",
   "Экономика",
-  "Биржа Ro Create",
-  "Штаб модерации",
-  "Ro Create | Система"
+  "Штаб модерации"
 ];
 
 const managedCategoryTemplate = {
-  baseName: "ro-create │ система",
-  aliases: ["ro-create │ система", "ro-create-система", "ro create система", "система-ro-create"]
+  publicHub: {
+    baseName: "основное",
+    aliases: ["основное", "информация", "information"],
+    icon: "📌"
+  },
+  marketHub: {
+    baseName: "биржа",
+    aliases: ["биржа", "биржа ro create", "market", "поиски"],
+    icon: "📢"
+  },
+  taskHub: {
+    baseName: "задания",
+    aliases: ["задания", "обучение", "tasks"],
+    icon: "🎯"
+  },
+  staffHub: {
+    baseName: "модерация",
+    aliases: ["модерация", "moderator-only", "staff", "штаб"],
+    icon: "🛡️"
+  }
 };
 
 function buildOverwrites({
@@ -106,7 +147,13 @@ function buildOverwrites({
   if (visibility === "verified" && verifiedRoleId) {
     overwrites.push({
       id: verifiedRoleId,
-      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory]
+      allow: [
+        PermissionFlagsBits.ViewChannel,
+        PermissionFlagsBits.SendMessages,
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.AttachFiles,
+        PermissionFlagsBits.EmbedLinks
+      ]
     });
   }
 
@@ -116,7 +163,8 @@ function buildOverwrites({
       allow: [
         PermissionFlagsBits.ViewChannel,
         PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory
+        PermissionFlagsBits.ReadMessageHistory,
+        PermissionFlagsBits.ManageMessages
       ]
     });
   }
@@ -139,6 +187,8 @@ function buildOverwrites({
       PermissionFlagsBits.ViewChannel,
       PermissionFlagsBits.SendMessages,
       PermissionFlagsBits.ReadMessageHistory,
+      PermissionFlagsBits.AttachFiles,
+      PermissionFlagsBits.EmbedLinks,
       PermissionFlagsBits.ManageChannels,
       ...(botCanManageRoles ? [PermissionFlagsBits.ManageRoles] : [])
     ]
@@ -148,6 +198,7 @@ function buildOverwrites({
 }
 
 module.exports = {
+  ROLE_NAMES,
   roleTemplates,
   managedTemplates,
   obsoleteManagedTemplates,

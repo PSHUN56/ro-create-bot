@@ -6,6 +6,7 @@ const {
   PermissionFlagsBits
 } = require("discord.js");
 const {
+  ROLE_NAMES,
   roleTemplates,
   managedTemplates,
   obsoleteManagedTemplates,
@@ -15,21 +16,10 @@ const {
 } = require("./config/serverTemplate");
 
 const STAFF_ROLE_NAMES = [
-  "Основатель",
-  "Администрация",
-  "Проверяющий задания",
-  "Модератор объявлений"
-];
-
-const EXEMPT_CATEGORY_KEYWORDS = [
-  "голосовые",
-  "основное",
-  "сообщество",
-  "поиски",
-  "девелопмент",
-  "обучение",
-  "сотрудничество",
-  "big fire"
+  ROLE_NAMES.founder,
+  ROLE_NAMES.admin,
+  ROLE_NAMES.taskReviewer,
+  ROLE_NAMES.adReviewer
 ];
 
 function normalizeName(value) {
@@ -42,31 +32,21 @@ function matchesAlias(channelName, aliases) {
 }
 
 function extractStyleSample(guild) {
-  const namedChannels = guild.channels.cache
-    .filter((channel) => channel.type === ChannelType.GuildText)
+  const names = guild.channels.cache
+    .filter((channel) => [ChannelType.GuildText, ChannelType.GuildCategory].includes(channel.type))
     .map((channel) => channel.name);
 
-  const styleSource = namedChannels.find((name) => name.includes("│")) || namedChannels.find((name) => name.includes("・"));
-  if (!styleSource) {
-    return { divider: "│", prefix: "📢" };
-  }
-
-  const divider = styleSource.includes("│") ? "│" : "・";
-  const firstPart = styleSource.split(divider)[0].trim();
+  const source = names.find((name) => name.includes("│")) || names.find((name) => name.includes("・"));
   return {
-    divider,
-    prefix: firstPart || "📢"
+    divider: source?.includes("・") ? "・" : "│",
+    spacer: " "
   };
 }
 
-function makeStyledName(baseName, style, fallbackPrefix) {
-  return `${fallbackPrefix || style.prefix} ${style.divider} ${baseName}`;
-}
-
-function shouldKeepCategoryOpen(category) {
-  return EXEMPT_CATEGORY_KEYWORDS.some((keyword) =>
-    normalizeName(category.name).includes(keyword)
-  );
+function makeStyledName(baseName, style, prefix = "") {
+  return prefix
+    ? `${prefix}${style.spacer}${style.divider}${style.spacer}${baseName}`
+    : `${style.divider}${style.spacer}${baseName}`;
 }
 
 async function ensureRole(guild, template) {
@@ -82,188 +62,212 @@ async function ensureRole(guild, template) {
   });
 }
 
-function findChannel(guild, aliases, type = ChannelType.GuildText) {
-  return guild.channels.cache.find(
+async function ensureRoleHierarchy(guild, roleMap) {
+  const botMember = guild.members.me;
+  if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles)) {
+    return;
+  }
+
+  let position = botMember.roles.highest.position - 1;
+  const order = [
+    ROLE_NAMES.verified,
+    ROLE_NAMES.adReviewer,
+    ROLE_NAMES.taskReviewer,
+    ROLE_NAMES.admin,
+    ROLE_NAMES.founder
+  ];
+
+  for (const roleName of order) {
+    const role = roleMap[roleName];
+    if (!role || role.position >= botMember.roles.highest.position) {
+      continue;
+    }
+
+    await role.setPosition(position).catch(() => null);
+    position -= 1;
+  }
+}
+
+function findChannelsByAliases(guild, aliases, type) {
+  return guild.channels.cache.filter(
     (channel) => channel.type === type && matchesAlias(channel.name, aliases)
   );
 }
 
-async function ensureManagedCategory(guild, style, staffRoleIds, ownerId, verifiedRoleId, botCanManageRoles) {
-  const styledName = makeStyledName("система", style, "🤖");
-  const aliases = [...managedCategoryTemplate.aliases, styledName];
-  let category = findChannel(guild, aliases, ChannelType.GuildCategory);
-
-  const overwrites = buildOverwrites({
-    guild,
-    visibility: "staff",
-    verifiedRoleId,
-    staffRoleIds,
-    ownerId,
-    botCanManageRoles
-  });
-
-  if (!category) {
-    category = await guild.channels.create({
-      name: styledName,
-      type: ChannelType.GuildCategory,
-      permissionOverwrites: overwrites,
-      reason: "Автонастройка Ro Create"
-    });
-  } else {
-    await category.edit({
-      name: styledName,
-      permissionOverwrites: overwrites,
-      reason: "Автонастройка Ro Create"
-    });
+function chooseBestChannel(channels, preferredParentId = null) {
+  if (channels.size === 0) {
+    return null;
   }
 
-  return category;
+  return [...channels.values()].sort((a, b) => {
+    const aPreferred = preferredParentId && a.parentId === preferredParentId ? 1 : 0;
+    const bPreferred = preferredParentId && b.parentId === preferredParentId ? 1 : 0;
+    if (aPreferred !== bPreferred) {
+      return bPreferred - aPreferred;
+    }
+    return a.position - b.position;
+  })[0];
 }
 
-async function ensureManagedChannel(
-  guild,
-  template,
-  style,
-  managedCategory,
-  staffRoleIds,
-  ownerId,
-  verifiedRoleId,
-  botCanManageRoles
-) {
-  const fallbackPrefix =
-    template.key === "verification" ? "✅"
-      : template.key.includes("Review") ? "🛡️"
-        : template.key === "ads" ? "📢"
-          : template.key === "taskSubmit" ? "📩"
-            : "📌";
+function findCategoryByAliases(guild, aliases) {
+  return guild.channels.cache.find(
+    (channel) => channel.type === ChannelType.GuildCategory && matchesAlias(channel.name, aliases)
+  );
+}
 
-  const styledName = makeStyledName(template.baseName, style, fallbackPrefix);
-  const aliases = [...template.aliases, styledName];
-  const existing = findChannel(guild, aliases, template.type);
+function pickPlacementCategories(guild, existingChannels) {
+  return {
+    publicHub:
+      existingChannels.news?.parent || findCategoryByAliases(guild, managedCategoryTemplate.publicHub.aliases) || null,
+    marketHub:
+      existingChannels.ads?.parent || findCategoryByAliases(guild, managedCategoryTemplate.marketHub.aliases) || null,
+    taskHub:
+      existingChannels.tasks?.parent || findCategoryByAliases(guild, managedCategoryTemplate.taskHub.aliases) || null,
+    staffHub:
+      existingChannels.taskReview?.parent
+      || existingChannels.adReview?.parent
+      || findCategoryByAliases(guild, managedCategoryTemplate.staffHub.aliases)
+      || null
+  };
+}
 
-  const permissionOverwrites = buildOverwrites({
-    guild,
-    visibility: template.visibility,
-    verifiedRoleId,
-    staffRoleIds,
-    ownerId,
-    botCanManageRoles
-  });
-
-  const parent = template.visibility === "public" ? null : managedCategory.id;
+async function ensureCategoryForPlacement(guild, placementKey, style, categoryMap, overwriteOptions) {
+  const existing = categoryMap[placementKey];
+  const template = managedCategoryTemplate[placementKey];
+  const overwrites = buildOverwrites(overwriteOptions);
 
   if (existing) {
     await existing.edit({
-      name: styledName,
-      parent,
-      permissionOverwrites,
+      name: makeStyledName(template.baseName, style, template.icon),
+      permissionOverwrites: overwrites,
       reason: "Автонастройка Ro Create"
-    });
-
-    return { channel: existing, reused: true };
+    }).catch(() => null);
+    return existing;
   }
 
-  const created = await guild.channels.create({
-    name: styledName,
-    type: template.type,
-    parent,
-    permissionOverwrites,
+  const category = await guild.channels.create({
+    name: makeStyledName(template.baseName, style, template.icon),
+    type: ChannelType.GuildCategory,
+    permissionOverwrites: overwrites,
     reason: "Автонастройка Ro Create"
   });
 
-  return { channel: created, reused: false };
+  categoryMap[placementKey] = category;
+  return category;
 }
 
-async function cleanupObsolete(guild, managedCategoryId) {
-  const removedChannels = [];
+async function ensureManagedChannel(guild, template, style, categoryMap, overwriteOptions) {
+  const matches = findChannelsByAliases(guild, template.aliases, template.type);
+  const preferredParentId = categoryMap[template.placement]?.id || null;
+  const primary = chooseBestChannel(matches, preferredParentId);
+
+  const category = await ensureCategoryForPlacement(
+    guild,
+    template.placement,
+    style,
+    categoryMap,
+    {
+      ...overwriteOptions,
+      visibility: template.visibility === "staff" ? "staff" : "verified"
+    }
+  );
+
+  const channelData = {
+    name: makeStyledName(template.baseName, style, template.icon),
+    parent: category?.id || null,
+    permissionOverwrites: buildOverwrites({
+      ...overwriteOptions,
+      visibility: template.visibility
+    }),
+    reason: "Автонастройка Ro Create"
+  };
+
+  const channel = primary
+    ? await primary.edit(channelData).then(() => primary)
+    : await guild.channels.create({ ...channelData, type: template.type });
+
+  const duplicates = [...matches.values()].filter((entry) => entry.id !== channel.id);
+  for (const duplicate of duplicates) {
+    await duplicate.delete("Удаление дубля системного канала Ro Create").catch(() => null);
+  }
+
+  return {
+    channel,
+    removedDuplicates: duplicates.map((entry) => `#${entry.name}`)
+  };
+}
+
+async function cleanupObsolete(guild, preservedIds) {
+  const removed = [];
 
   for (const template of obsoleteManagedTemplates) {
     const channel = guild.channels.cache.find(
       (entry) =>
-        entry.type === ChannelType.GuildText
+        [ChannelType.GuildText, ChannelType.GuildCategory].includes(entry.type)
+        && !preservedIds.has(entry.id)
         && matchesAlias(entry.name, template.aliases)
-        && (!entry.parentId || entry.parentId === managedCategoryId)
     );
 
-    if (channel) {
-      removedChannels.push(`#${channel.name}`);
-      await channel.delete("Удаление лишнего системного канала Ro Create");
+    if (!channel) {
+      continue;
     }
+
+    removed.push(channel.type === ChannelType.GuildCategory ? channel.name : `#${channel.name}`);
+    await channel.delete("Удаление лишнего канала Ro Create").catch(() => null);
   }
 
   for (const categoryName of legacyManagedCategories) {
     const category = guild.channels.cache.find(
-      (channel) => channel.type === ChannelType.GuildCategory && channel.name === categoryName
+      (channel) =>
+        channel.type === ChannelType.GuildCategory
+        && channel.name === categoryName
+        && !preservedIds.has(channel.id)
     );
 
-    if (category) {
-      const children = guild.channels.cache.filter((channel) => channel.parentId === category.id);
-      if (children.size === 0) {
-        await category.delete("Удаление устаревшей пустой категории Ro Create");
-      }
-    }
-  }
-
-  return removedChannels;
-}
-
-async function lockServerToVerified(
-  guild,
-  verificationChannelId,
-  newsChannelId,
-  staffRoleIds,
-  ownerId,
-  verifiedRoleId,
-  botCanManageRoles
-) {
-  const touched = [];
-
-  for (const channel of guild.channels.cache.values()) {
-    if (channel.id === newsChannelId || channel.id === verificationChannelId) {
+    if (!category) {
       continue;
     }
 
-    if (channel.parentId) {
-      const parent = guild.channels.cache.get(channel.parentId);
-      if (parent && shouldKeepCategoryOpen(parent) && channel.type !== ChannelType.GuildVoice) {
-        // existing themed categories still become verified-only
-      }
+    const children = guild.channels.cache.filter((channel) => channel.parentId === category.id);
+    if (children.size === 0) {
+      removed.push(category.name);
+      await category.delete("Удаление пустой старой категории Ro Create").catch(() => null);
     }
-
-    const visibility = STAFF_ROLE_NAMES.some((roleName) =>
-      normalizeName(channel.name).includes("moderator") || normalizeName(channel.name).includes("staff")
-    )
-      ? "staff"
-      : "verified";
-
-    const permissionOverwrites = buildOverwrites({
-      guild,
-      visibility,
-      verifiedRoleId,
-      staffRoleIds,
-      ownerId,
-      botCanManageRoles
-    });
-
-    await channel.edit({
-      permissionOverwrites,
-      reason: "Ограничение доступа до прохождения верификации"
-    }).catch(() => null);
-
-    touched.push(channel.id);
   }
 
-  return touched;
+  return removed;
+}
+
+function isReviewChannel(channel) {
+  const normalized = normalizeName(channel.name);
+  return normalized.includes("проверка") || normalized.includes("moderator-only");
+}
+
+async function lockServerToVerified(guild, newsChannelId, verificationChannelId, overwriteOptions) {
+  for (const channel of guild.channels.cache.values()) {
+    const visibility =
+      channel.id === newsChannelId || channel.id === verificationChannelId
+        ? "public"
+        : isReviewChannel(channel)
+          ? "staff"
+          : "verified";
+
+    await channel.edit({
+      permissionOverwrites: buildOverwrites({
+        ...overwriteOptions,
+        visibility
+      }),
+      reason: "Ro Create: доступ через верификацию"
+    }).catch(() => null);
+  }
 }
 
 async function ensureVerificationMessage(channel, verifiedRole) {
   const content = [
-    "Добро пожаловать в Ro Create.",
+    "Привет. До верификации на сервере открыты только новости и этот канал.",
     "",
-    "Сейчас сервер работает в режиме закрытого доступа: пока участник не пройдет верификацию, ему видны только новости и этот канал.",
-    "",
-    "Нажми кнопку ниже, чтобы получить доступ к остальным разделам сервера.",
-    verifiedRole ? `После нажатия бот выдаст роль <@&${verifiedRole.id}> и откроет основные каналы.` : ""
+    "Нажми кнопку ниже, и бот выдаст роль доступа к основным разделам Ro Create.",
+    verifiedRole ? `После подтверждения ты получишь роль <@&${verifiedRole.id}>.` : ""
   ].filter(Boolean).join("\n");
 
   const row = new ActionRowBuilder().addComponents(
@@ -274,9 +278,7 @@ async function ensureVerificationMessage(channel, verifiedRole) {
   );
 
   const recent = await channel.messages.fetch({ limit: 10 }).catch(() => null);
-  const existing = recent?.find((message) =>
-    message.author.id === channel.guild.members.me.id && message.components.length > 0
-  );
+  const existing = recent?.find((message) => message.author.id === channel.guild.members.me.id);
 
   if (existing) {
     await existing.edit({ content, components: [row] });
@@ -286,20 +288,21 @@ async function ensureVerificationMessage(channel, verifiedRole) {
   await channel.send({ content, components: [row] });
 }
 
-async function ensureBotInstruction(channel) {
+async function ensureTaskPanel(channel) {
   const content = [
-    "Я подстроил системную часть под уже готовый сервер, а не строил новый поверх него.",
+    "Сюда отправляются выполненные ежедневные задания.",
     "",
-    "Что сейчас включено:",
-    "— до верификации видны только новости и канал верификации;",
-    "— после кнопки участник получает роль `Верифицирован` и открывает остальную структуру;",
-    "— служебные каналы для проверки заданий и объявлений спрятаны отдельно;",
-    "— лишние старые системные заготовки удалены."
+    "Что можно приложить:",
+    "— скриншот",
+    "— видео",
+    "— короткий комментарий о том, что именно было сделано",
+    "",
+    "Для отправки используй `/submit-task`."
   ].join("\n");
 
   const recent = await channel.messages.fetch({ limit: 10 }).catch(() => null);
-  const existing = recent?.find((message) =>
-    message.author.id === channel.guild.members.me.id && message.content.includes("Я подстроил системную часть")
+  const existing = recent?.find(
+    (message) => message.author.id === channel.guild.members.me.id && message.content.includes("Сюда отправляются")
   );
 
   if (existing) {
@@ -316,88 +319,96 @@ async function setupServer(guild, ownerMember) {
 
   const style = extractStyleSample(guild);
   const botCanManageRoles = guild.members.me.permissions.has(PermissionFlagsBits.ManageRoles);
-
   const roleMap = {};
+
   for (const template of roleTemplates) {
     roleMap[template.name] = await ensureRole(guild, template);
   }
 
-  const founderRole = roleMap["Основатель"];
-  if (founderRole && ownerMember.manageable && !ownerMember.roles.cache.has(founderRole.id)) {
-    await ownerMember.roles.add(founderRole, "Назначение основателя при первой настройке");
+  await ensureRoleHierarchy(guild, roleMap);
+
+  const founderRole = roleMap[ROLE_NAMES.founder];
+  if (founderRole && !ownerMember.roles.cache.has(founderRole.id)) {
+    await ownerMember.roles.add(founderRole, "Назначение основателя при настройке").catch(() => null);
   }
 
-  const verifiedRole = roleMap["Верифицирован"];
+  const verifiedRole = roleMap[ROLE_NAMES.verified];
   const staffRoleIds = Object.values(roleMap)
     .filter((role) => STAFF_ROLE_NAMES.includes(role.name))
     .map((role) => role.id);
 
-  const managedCategory = await ensureManagedCategory(
+  const existingChannels = {};
+  for (const template of managedTemplates) {
+    existingChannels[template.key] = chooseBestChannel(
+      findChannelsByAliases(guild, template.aliases, template.type)
+    );
+  }
+
+  const categoryMap = pickPlacementCategories(guild, existingChannels);
+  const overwriteOptions = {
     guild,
-    style,
+    verifiedRoleId: verifiedRole?.id,
     staffRoleIds,
-    ownerMember.id,
-    verifiedRole?.id,
+    ownerId: ownerMember.id,
     botCanManageRoles
-  );
+  };
 
   const channelMap = {};
+  const removedDuplicates = [];
+
   for (const template of managedTemplates) {
     channelMap[template.key] = await ensureManagedChannel(
       guild,
       template,
       style,
-      managedCategory,
-      staffRoleIds,
-      ownerMember.id,
-      verifiedRole?.id,
-      botCanManageRoles
+      categoryMap,
+      overwriteOptions
     );
+    removedDuplicates.push(...channelMap[template.key].removedDuplicates);
   }
 
   await ensureVerificationMessage(channelMap.verification.channel, verifiedRole);
-  await ensureBotInstruction(channelMap.taskReview.channel);
+  await ensureTaskPanel(channelMap.taskSubmit.channel);
 
-  const removedChannels = await cleanupObsolete(guild, managedCategory.id);
   await lockServerToVerified(
     guild,
-    channelMap.verification.channel.id,
     channelMap.news.channel.id,
-    staffRoleIds,
-    ownerMember.id,
-    verifiedRole?.id,
-    botCanManageRoles
+    channelMap.verification.channel.id,
+    overwriteOptions
   );
 
+  const preservedIds = new Set([
+    ...Object.values(categoryMap).filter(Boolean).map((channel) => channel.id),
+    ...Object.values(channelMap).map((entry) => entry.channel.id)
+  ]);
+  const removedObsolete = await cleanupObsolete(guild, preservedIds);
+
   const instructions = [
-    `Открыты для всех только <#${channelMap.news.channel.id}> и <#${channelMap.verification.channel.id}>.`,
-    `После нажатия кнопки верификации участник получает роль <@&${verifiedRole.id}> и видит остальной сервер.`,
-    `Служебные каналы бота убраны в <#${managedCategory.id}> и скрыты от обычных участников.`
+    `Открыты для новых участников только <#${channelMap.news.channel.id}> и <#${channelMap.verification.channel.id}>.`,
+    `После кнопки верификации бот выдает роль <@&${verifiedRole.id}> и открывает основной сервер.`,
+    `Заявки по ежедневным заданиям отправляются через <#${channelMap.taskSubmit.channel.id}>, а проверка идет в <#${channelMap.taskReview.channel.id}>.`,
+    `Объявления публикуются в <#${channelMap.ads.channel.id}>, а модерация объявлений идет в <#${channelMap.adReview.channel.id}>.`
   ];
 
-  if (removedChannels.length > 0) {
-    instructions.push(`Удалено лишнее: ${removedChannels.join(", ")}.`);
+  const removed = [...removedDuplicates, ...removedObsolete];
+  if (removed.length > 0) {
+    instructions.push(`Убрано лишнее: ${removed.join(", ")}.`);
   }
 
-  return {
-    roleMap,
-    managedCategory,
-    channelMap,
-    instructions
-  };
+  return { roleMap, channelMap, instructions };
 }
 
 function hasTaskReviewerRole(member) {
   return member.permissions.has(PermissionFlagsBits.Administrator)
     || member.roles.cache.some((role) =>
-      ["Проверяющий задания", "Администрация", "Основатель"].includes(role.name)
+      [ROLE_NAMES.taskReviewer, ROLE_NAMES.admin, ROLE_NAMES.founder].includes(role.name)
     );
 }
 
 function hasAdReviewerRole(member) {
   return member.permissions.has(PermissionFlagsBits.Administrator)
     || member.roles.cache.some((role) =>
-      ["Модератор объявлений", "Администрация", "Основатель"].includes(role.name)
+      [ROLE_NAMES.adReviewer, ROLE_NAMES.admin, ROLE_NAMES.founder].includes(role.name)
     );
 }
 

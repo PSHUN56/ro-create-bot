@@ -19,7 +19,7 @@ const {
 const { withState, ensureUser, loadState } = require("./storage");
 const { getTaskForDate } = require("./tasks");
 const { setupServer, hasTaskReviewerRole, hasAdReviewerRole } = require("./setupServer");
-const { managedTemplates } = require("./config/serverTemplate");
+const { ROLE_NAMES, managedTemplates } = require("./config/serverTemplate");
 
 const token = process.env.DISCORD_TOKEN;
 const clientId = process.env.CLIENT_ID;
@@ -37,7 +37,7 @@ const client = new Client({
 const commands = [
   new SlashCommandBuilder()
     .setName("setup-server")
-    .setDescription("Создать роли и приватные тестовые каналы Ro Create"),
+    .setDescription("Настроить роли, доступ и служебные каналы Ro Create"),
   new SlashCommandBuilder()
     .setName("balance")
     .setDescription("Показать баланс монет"),
@@ -57,10 +57,13 @@ const commands = [
     .setName("submit-task")
     .setDescription("Отправить ежедневное задание на проверку")
     .addAttachmentOption((option) =>
-      option.setName("скриншот").setDescription("Скриншот выполненного задания").setRequired(true)
+      option.setName("медиа").setDescription("Скриншот или видео выполненного задания").setRequired(true)
+    )
+    .addAttachmentOption((option) =>
+      option.setName("медиа2").setDescription("Дополнительный файл, если нужен").setRequired(false)
     )
     .addStringOption((option) =>
-      option.setName("описание").setDescription("Что ты сделал и что проверить").setRequired(true)
+      option.setName("комментарий").setDescription("Что именно ты сделал и что проверить").setRequired(true).setMaxLength(600)
     ),
   new SlashCommandBuilder()
     .setName("post-ad")
@@ -104,54 +107,6 @@ async function registerCommands() {
   await rest.put(Routes.applicationGuildCommands(clientId, guildId), { body: commands });
 }
 
-function formatCooldown(ms) {
-  const totalMinutes = Math.ceil(ms / 60000);
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-
-  if (hours > 0) {
-    return `${hours} ч. ${minutes} мин.`;
-  }
-
-  return `${minutes} мин.`;
-}
-
-function createTaskReviewRow(submissionId) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`task:approve:${submissionId}`)
-      .setLabel("Принять")
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(`task:reject:${submissionId}`)
-      .setLabel("Отклонить")
-      .setStyle(ButtonStyle.Danger)
-  );
-}
-
-function createAdReviewRow(submissionId) {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`ad:approve:${submissionId}`)
-      .setLabel("Опубликовать")
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId(`ad:reject:${submissionId}`)
-      .setLabel("Отклонить")
-      .setStyle(ButtonStyle.Danger)
-  );
-}
-
-async function findChannelByName(guild, name) {
-  if (guild.channels.cache.size === 0) {
-    await guild.channels.fetch();
-  }
-
-  return guild.channels.cache.find(
-    (channel) => channel.type === ChannelType.GuildText && channel.name === name
-  );
-}
-
 function normalizeName(value) {
   return value.trim().toLowerCase();
 }
@@ -178,6 +133,93 @@ async function findManagedChannel(guild, key) {
   );
 }
 
+function formatCooldown(ms) {
+  const totalMinutes = Math.ceil(ms / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+
+  if (hours > 0) {
+    return `${hours} ч. ${minutes} мин.`;
+  }
+
+  return `${minutes} мин.`;
+}
+
+function createTaskReviewRow(submissionId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`task:approve:${submissionId}`)
+      .setLabel("Принять задание")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`task:reject:${submissionId}`)
+      .setLabel("Отклонить")
+      .setStyle(ButtonStyle.Danger)
+  );
+}
+
+function createAdReviewRow(submissionId) {
+  return new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`ad:approve:${submissionId}`)
+      .setLabel("Опубликовать")
+      .setStyle(ButtonStyle.Success),
+    new ButtonBuilder()
+      .setCustomId(`ad:reject:${submissionId}`)
+      .setLabel("Отклонить")
+      .setStyle(ButtonStyle.Danger)
+  );
+}
+
+function buildTaskEmbed(task, dateKey) {
+  return new EmbedBuilder()
+    .setTitle(`Ежедневное задание: ${task.title}`)
+    .setColor(0x22c55e)
+    .setDescription(task.description)
+    .addFields({ name: "Награда", value: `${task.reward} монет`, inline: true })
+    .setFooter({ text: `Daily Task ${dateKey}` });
+}
+
+async function ensureDailyTaskPost(guild) {
+  const channel = await findManagedChannel(guild, "tasks");
+  if (!channel) {
+    return;
+  }
+
+  const task = getTaskForDate();
+  const dateKey = new Date().toISOString().slice(0, 10);
+  const recent = await channel.messages.fetch({ limit: 20 }).catch(() => null);
+  const alreadyPosted = recent?.some(
+    (message) =>
+      message.author.id === guild.members.me.id
+      && message.embeds[0]?.footer?.text === `Daily Task ${dateKey}`
+  );
+
+  if (alreadyPosted) {
+    return;
+  }
+
+  await channel.send({
+    content: "Новое ежедневное задание уже здесь.",
+    embeds: [buildTaskEmbed(task, dateKey)]
+  }).catch(() => null);
+}
+
+function submissionMediaFields(submission) {
+  const lines = [submission.mediaUrl];
+  if (submission.mediaUrl2) {
+    lines.push(submission.mediaUrl2);
+  }
+  return lines.join("\n");
+}
+
+function applyPreview(embed, attachment) {
+  if (attachment?.contentType?.startsWith("image/")) {
+    embed.setImage(attachment.url);
+  }
+  return embed;
+}
+
 async function updateStoredReviewMessage(guild, submission, embed) {
   if (!submission.reviewChannelId || !submission.reviewMessageId) {
     return;
@@ -198,6 +240,21 @@ async function updateStoredReviewMessage(guild, submission, embed) {
 
 client.once("clientReady", async () => {
   await registerCommands();
+  const guild = await client.guilds.fetch(guildId).catch(() => null);
+  if (guild) {
+    const fullGuild = await guild.fetch();
+    await ensureDailyTaskPost(fullGuild);
+  }
+
+  setInterval(async () => {
+    const currentGuild = await client.guilds.fetch(guildId).catch(() => null);
+    if (!currentGuild) {
+      return;
+    }
+
+    await ensureDailyTaskPost(await currentGuild.fetch()).catch(() => null);
+  }, 30 * 60 * 1000);
+
   console.log(`Ro Create bot online as ${client.user.tag}`);
 });
 
@@ -205,7 +262,7 @@ client.on("interactionCreate", async (interaction) => {
   try {
     if (interaction.isChatInputCommand()) {
       if (!interaction.inGuild()) {
-        return interaction.reply({ content: "Эта команда работает только на сервере.", ephemeral: true });
+        return interaction.reply({ content: "Эта команда работает только на сервере.", flags: 64 });
       }
 
       const guild = interaction.guild;
@@ -215,12 +272,13 @@ client.on("interactionCreate", async (interaction) => {
         if (!member.permissions.has(PermissionFlagsBits.ManageGuild)) {
           return interaction.reply({
             content: "Для этой команды нужно право `Управлять сервером`.",
-            ephemeral: true
+            flags: 64
           });
         }
 
-        await interaction.deferReply({ ephemeral: true });
+        await interaction.deferReply({ flags: 64 });
         const result = await setupServer(guild, interaction.member);
+        await ensureDailyTaskPost(guild).catch(() => null);
 
         return interaction.editReply({
           content: `Ro Create настроен.\n${result.instructions.join("\n")}`
@@ -231,7 +289,7 @@ client.on("interactionCreate", async (interaction) => {
         const userState = withState((state) => ensureUser(state, guild.id, interaction.user));
         return interaction.reply({
           content: `У тебя сейчас \`${userState.coins}\` монет.`,
-          ephemeral: true
+          flags: 64
         });
       }
 
@@ -247,7 +305,7 @@ client.on("interactionCreate", async (interaction) => {
             { name: "Опубликовано объявлений", value: String(userState.acceptedAds), inline: true }
           );
 
-        return interaction.reply({ embeds: [embed], ephemeral: true });
+        return interaction.reply({ embeds: [embed], flags: 64 });
       }
 
       if (interaction.commandName === "daily") {
@@ -271,13 +329,13 @@ client.on("interactionCreate", async (interaction) => {
         if (!result.ok) {
           return interaction.reply({
             content: `Ежедневный бонус уже получен. Возвращайся через ${formatCooldown(result.remaining)}.`,
-            ephemeral: true
+            flags: 64
           });
         }
 
         return interaction.reply({
           content: `Ежедневный бонус получен: \`+${reward}\` монет. Новый баланс: \`${result.coins}\`.`,
-          ephemeral: true
+          flags: 64
         });
       }
 
@@ -302,38 +360,35 @@ client.on("interactionCreate", async (interaction) => {
         if (!result.ok) {
           return interaction.reply({
             content: `Подработка пока на кулдауне. Возвращайся через ${formatCooldown(result.remaining)}.`,
-            ephemeral: true
+            flags: 64
           });
         }
 
         return interaction.reply({
           content: `Ты поработал и заработал \`+${result.reward}\` монет. Теперь у тебя \`${result.coins}\`.`,
-          ephemeral: true
+          flags: 64
         });
       }
 
       if (interaction.commandName === "tasks") {
         const task = getTaskForDate();
-        const embed = new EmbedBuilder()
-          .setTitle(`Ежедневное задание: ${task.title}`)
-          .setColor(0x22c55e)
-          .setDescription(task.description)
-          .addFields({ name: "Награда", value: `${task.reward} монет`, inline: true })
-          .setFooter({ text: "Отправка идет через /submit-task" });
-
-        return interaction.reply({ embeds: [embed], ephemeral: true });
+        return interaction.reply({
+          embeds: [buildTaskEmbed(task, new Date().toISOString().slice(0, 10))],
+          flags: 64
+        });
       }
 
       if (interaction.commandName === "submit-task") {
         const task = getTaskForDate();
-        const screenshot = interaction.options.getAttachment("скриншот", true);
-        const description = interaction.options.getString("описание", true);
+        const media = interaction.options.getAttachment("медиа", true);
+        const media2 = interaction.options.getAttachment("медиа2", false);
+        const comment = interaction.options.getString("комментарий", true);
         const reviewChannel = await findManagedChannel(guild, "taskReview");
 
         if (!reviewChannel) {
           return interaction.reply({
-            content: "Канал `проверка-заданий` не найден. Сначала выполни `/setup-server`.",
-            ephemeral: true
+            content: "Канал проверки заданий не найден. Сначала выполни `/setup-server`.",
+            flags: 64
           });
         }
 
@@ -348,8 +403,10 @@ client.on("interactionCreate", async (interaction) => {
             taskId: task.id,
             taskTitle: task.title,
             reward: task.reward,
-            description,
-            screenshotUrl: screenshot.url,
+            comment,
+            mediaUrl: media.url,
+            mediaUrl2: media2?.url || null,
+            mediaContentType: media.contentType || null,
             status: "pending",
             createdAt: new Date().toISOString()
           };
@@ -361,14 +418,16 @@ client.on("interactionCreate", async (interaction) => {
         const embed = new EmbedBuilder()
           .setTitle(`Проверка задания #${submission.id}`)
           .setColor(0xf59e0b)
-          .setDescription(description)
+          .setDescription(comment)
           .addFields(
             { name: "Участник", value: `<@${interaction.user.id}>`, inline: true },
             { name: "Задание", value: submission.taskTitle, inline: true },
-            { name: "Награда", value: `${submission.reward} монет`, inline: true }
+            { name: "Награда", value: `${submission.reward} монет`, inline: true },
+            { name: "Медиа", value: submissionMediaFields(submission) }
           )
-          .setImage(screenshot.url)
           .setFooter({ text: `ID заявки: ${submission.id}` });
+
+        applyPreview(embed, media);
 
         const reviewMessage = await reviewChannel.send({
           embeds: [embed],
@@ -383,8 +442,8 @@ client.on("interactionCreate", async (interaction) => {
         });
 
         return interaction.reply({
-          content: "Заявка отправлена на проверку. После решения проверяющего бот напишет тебе в ЛС.",
-          ephemeral: true
+          content: `Заявка отправлена на проверку. Если ее примут, ты получишь ${submission.reward} монет.`,
+          flags: 64
         });
       }
 
@@ -393,25 +452,23 @@ client.on("interactionCreate", async (interaction) => {
         const category = interaction.options.getString("категория", true);
         const description = interaction.options.getString("описание", true);
         const payment = interaction.options.getString("оплата", true);
-        const image = interaction.options.getAttachment("фото");
+        const image = interaction.options.getAttachment("фото", false);
         const reviewChannel = await findManagedChannel(guild, "adReview");
 
         if (!reviewChannel) {
           return interaction.reply({
-            content: "Канал `проверка-объявлений` не найден. Сначала выполни `/setup-server`.",
-            ephemeral: true
+            content: "Канал проверки объявлений не найден. Сначала выполни `/setup-server`.",
+            flags: 64
           });
         }
 
         const result = withState((state) => {
           const userState = ensureUser(state, guild.id, interaction.user);
-
           if (userState.coins < announcementCost) {
             return { ok: false, coins: userState.coins };
           }
 
           userState.coins -= announcementCost;
-
           const id = String(state.counters.adSubmission++);
           const record = {
             id,
@@ -422,7 +479,7 @@ client.on("interactionCreate", async (interaction) => {
             category,
             description,
             payment,
-            imageUrl: image ? image.url : null,
+            imageUrl: image?.url || null,
             cost: announcementCost,
             status: "pending",
             createdAt: new Date().toISOString()
@@ -435,7 +492,7 @@ client.on("interactionCreate", async (interaction) => {
         if (!result.ok) {
           return interaction.reply({
             content: `Для публикации нужно \`${announcementCost}\` монет. Сейчас у тебя \`${result.coins}\`.`,
-            ephemeral: true
+            flags: 64
           });
         }
 
@@ -469,7 +526,7 @@ client.on("interactionCreate", async (interaction) => {
 
         return interaction.reply({
           content: `Объявление отправлено на проверку. С баланса списано \`${announcementCost}\` монет, осталось \`${result.remaining}\`.`,
-          ephemeral: true
+          flags: 64
         });
       }
 
@@ -485,47 +542,47 @@ client.on("interactionCreate", async (interaction) => {
 
         return interaction.reply({
           content: `${target} получил \`${amount}\` монет. Новый баланс: \`${userState.coins}\`.`,
-          ephemeral: true
+          flags: 64
         });
       }
     }
 
     if (interaction.isButton()) {
       const [kind, action, submissionId] = interaction.customId.split(":");
-      const state = loadState();
 
       if (kind === "verify" && action === "grant") {
-        const verifiedRole = interaction.guild.roles.cache.find((role) => role.name === "Верифицирован");
+        const verifiedRole = interaction.guild.roles.cache.find((role) => role.name === ROLE_NAMES.verified);
         if (!verifiedRole) {
           return interaction.reply({
             content: "Роль `Верифицирован` пока не найдена. Сначала выполни `/setup-server`.",
-            ephemeral: true
+            flags: 64
           });
         }
 
         if (interaction.member.roles.cache.has(verifiedRole.id)) {
           return interaction.reply({
             content: "Ты уже прошел верификацию. Добро пожаловать в основной сервер.",
-            ephemeral: true
+            flags: 64
           });
         }
 
         await interaction.member.roles.add(verifiedRole, "Верификация через кнопку Ro Create");
-
         return interaction.reply({
-          content: `Готово. Тебе выдана роль <@&${verifiedRole.id}>, и основные каналы сервера уже открыты.`,
-          ephemeral: true
+          content: `Готово. Тебе выдана роль <@&${verifiedRole.id}>, и основные каналы уже открыты.`,
+          flags: 64
         });
       }
 
+      const state = loadState();
+
       if (kind === "task") {
         if (!hasTaskReviewerRole(interaction.member)) {
-          return interaction.reply({ content: "У тебя нет прав на проверку заданий.", ephemeral: true });
+          return interaction.reply({ content: "У тебя нет прав на проверку заданий.", flags: 64 });
         }
 
         const submission = state.taskSubmissions[submissionId];
         if (!submission || submission.status !== "pending") {
-          return interaction.reply({ content: "Эта заявка уже обработана.", ephemeral: true });
+          return interaction.reply({ content: "Эта заявка уже обработана.", flags: 64 });
         }
 
         if (action === "approve") {
@@ -547,11 +604,11 @@ client.on("interactionCreate", async (interaction) => {
           });
 
           if (!result) {
-            return interaction.reply({ content: "Эта заявка уже обработана.", ephemeral: true });
+            return interaction.reply({ content: "Эта заявка уже обработана.", flags: 64 });
           }
 
-          const user = await client.users.fetch(result.current.userId);
-          await user.send(
+          const user = await client.users.fetch(result.current.userId).catch(() => null);
+          await user?.send(
             `Твое ежедневное задание #${result.current.id} принято. Начислено ${result.current.reward} монет.`
           ).catch(() => null);
 
@@ -581,20 +638,20 @@ client.on("interactionCreate", async (interaction) => {
 
       if (kind === "ad") {
         if (!hasAdReviewerRole(interaction.member)) {
-          return interaction.reply({ content: "У тебя нет прав на проверку объявлений.", ephemeral: true });
+          return interaction.reply({ content: "У тебя нет прав на проверку объявлений.", flags: 64 });
         }
 
         const submission = state.adSubmissions[submissionId];
         if (!submission || submission.status !== "pending") {
-          return interaction.reply({ content: "Это объявление уже обработано.", ephemeral: true });
+          return interaction.reply({ content: "Это объявление уже обработано.", flags: 64 });
         }
 
         if (action === "approve") {
           const adsChannel = await findManagedChannel(interaction.guild, "ads");
           if (!adsChannel) {
             return interaction.reply({
-              content: "Канал `объявления` не найден. Сначала выполни `/setup-server`.",
-              ephemeral: true
+              content: "Канал объявлений не найден. Сначала выполни `/setup-server`.",
+              flags: 64
             });
           }
 
@@ -610,12 +667,11 @@ client.on("interactionCreate", async (interaction) => {
 
             const userState = ensureUser(mutable, interaction.guildId, { id: current.userId, username: current.username });
             userState.acceptedAds += 1;
-
-            return { current };
+            return { current, userState };
           });
 
           if (!result) {
-            return interaction.reply({ content: "Это объявление уже обработано.", ephemeral: true });
+            return interaction.reply({ content: "Это объявление уже обработано.", flags: 64 });
           }
 
           const publicEmbed = new EmbedBuilder()
@@ -635,8 +691,8 @@ client.on("interactionCreate", async (interaction) => {
 
           await adsChannel.send({ embeds: [publicEmbed] });
 
-          const user = await client.users.fetch(result.current.userId);
-          await user.send(`Твое объявление #${result.current.id} одобрено и опубликовано.`).catch(() => null);
+          const user = await client.users.fetch(result.current.userId).catch(() => null);
+          await user?.send(`Твое объявление #${result.current.id} одобрено и опубликовано.`).catch(() => null);
 
           const approvedEmbed = EmbedBuilder.from(interaction.message.embeds[0])
             .setColor(0x22c55e)
@@ -669,7 +725,7 @@ client.on("interactionCreate", async (interaction) => {
 
       if (kind === "task-reject-modal") {
         if (!hasTaskReviewerRole(interaction.member)) {
-          return interaction.reply({ content: "У тебя нет прав на проверку заданий.", ephemeral: true });
+          return interaction.reply({ content: "У тебя нет прав на проверку заданий.", flags: 64 });
         }
 
         const result = withState((mutable) => {
@@ -686,39 +742,40 @@ client.on("interactionCreate", async (interaction) => {
         });
 
         if (!result) {
-          return interaction.reply({ content: "Эта заявка уже обработана.", ephemeral: true });
+          return interaction.reply({ content: "Эта заявка уже обработана.", flags: 64 });
         }
 
-        const user = await client.users.fetch(result.userId);
-        await user.send(
-          `Твое ежедневное задание #${result.id} отклонено. Причина: ${reason}`
-        ).catch(() => null);
+        const user = await client.users.fetch(result.userId).catch(() => null);
+        await user?.send(`Твое ежедневное задание #${result.id} отклонено. Причина: ${reason}`).catch(() => null);
 
-        const baseEmbed = new EmbedBuilder()
+        const embed = new EmbedBuilder()
           .setTitle(`Проверка задания #${result.id}`)
           .setColor(0xef4444)
-          .setDescription(result.description)
+          .setDescription(result.comment)
           .addFields(
             { name: "Участник", value: `<@${result.userId}>`, inline: true },
             { name: "Задание", value: result.taskTitle, inline: true },
             { name: "Награда", value: `${result.reward} монет`, inline: true },
+            { name: "Медиа", value: submissionMediaFields(result) },
             { name: "Статус", value: `Отклонено модератором <@${interaction.user.id}>` },
             { name: "Причина", value: reason }
           )
-          .setFooter({ text: `ID заявки: ${result.id}` })
-          .setImage(result.screenshotUrl);
+          .setFooter({ text: `ID заявки: ${result.id}` });
 
-        await updateStoredReviewMessage(interaction.guild, result, baseEmbed);
+        if (result.mediaContentType?.startsWith("image/")) {
+          embed.setImage(result.mediaUrl);
+        }
 
+        await updateStoredReviewMessage(interaction.guild, result, embed);
         return interaction.reply({
           content: "Заявка отклонена, причина отправлена пользователю в ЛС.",
-          ephemeral: true
+          flags: 64
         });
       }
 
       if (kind === "ad-reject-modal") {
         if (!hasAdReviewerRole(interaction.member)) {
-          return interaction.reply({ content: "У тебя нет прав на проверку объявлений.", ephemeral: true });
+          return interaction.reply({ content: "У тебя нет прав на проверку объявлений.", flags: 64 });
         }
 
         const result = withState((mutable) => {
@@ -738,15 +795,15 @@ client.on("interactionCreate", async (interaction) => {
         });
 
         if (!result) {
-          return interaction.reply({ content: "Это объявление уже обработано.", ephemeral: true });
+          return interaction.reply({ content: "Это объявление уже обработано.", flags: 64 });
         }
 
-        const user = await client.users.fetch(result.userId);
-        await user.send(
+        const user = await client.users.fetch(result.userId).catch(() => null);
+        await user?.send(
           `Твое объявление #${result.id} отклонено. Монеты возвращены. Причина: ${reason}`
         ).catch(() => null);
 
-        const baseEmbed = new EmbedBuilder()
+        const embed = new EmbedBuilder()
           .setTitle(`Объявление на модерацию #${result.id}`)
           .setColor(0xef4444)
           .setDescription(result.description)
@@ -760,14 +817,13 @@ client.on("interactionCreate", async (interaction) => {
           .setFooter({ text: result.title });
 
         if (result.imageUrl) {
-          baseEmbed.setImage(result.imageUrl);
+          embed.setImage(result.imageUrl);
         }
 
-        await updateStoredReviewMessage(interaction.guild, result, baseEmbed);
-
+        await updateStoredReviewMessage(interaction.guild, result, embed);
         return interaction.reply({
           content: "Объявление отклонено, монеты возвращены, автор уведомлен в ЛС.",
-          ephemeral: true
+          flags: 64
         });
       }
     }
@@ -777,14 +833,14 @@ client.on("interactionCreate", async (interaction) => {
     if (interaction.deferred || interaction.replied) {
       await interaction.followUp({
         content: "Что-то пошло не так. Проверь права бота и настройки `.env`.",
-        ephemeral: true
+        flags: 64
       }).catch(() => null);
       return;
     }
 
     await interaction.reply({
       content: "Что-то пошло не так. Проверь права бота и настройки `.env`.",
-      ephemeral: true
+      flags: 64
     }).catch(() => null);
   }
 });
