@@ -118,7 +118,7 @@ function findBestRoleMatch(guild, aliases) {
   const normalizedAliases = aliases.map(normalizeName);
 
   return guild.roles.cache
-    .filter((role) => isAssignableRole(guild, role))
+    .filter((role) => !role.managed && role.id !== guild.roles.everyone.id)
     .sort((left, right) => right.position - left.position)
     .find((role) => normalizedAliases.includes(normalizeName(role.name))) || null;
 }
@@ -134,7 +134,11 @@ function collectRolePickerOptions(guild) {
       return {
         label: group.label,
         value: role.id,
-        description: `Выдаёт роль ${role.name}`.slice(0, 100),
+        description: (
+          isAssignableRole(guild, role)
+            ? `Выдаёт роль ${role.name}`
+            : `Роль ${role.name} выше бота`
+        ).slice(0, 100),
         emoji: group.emoji
       };
     })
