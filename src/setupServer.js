@@ -21,17 +21,24 @@ const ROLE_PICKER_CHANNEL_ALIASES = [
 ];
 
 const ROLE_PICKER_GROUPS = [
-  { label: "Скриптер", emoji: "🧑‍💻", aliases: ["🧑‍💻 Скриптер", "Скриптер"] },
-  { label: "Билдер", emoji: "👷", aliases: ["👷 Билдер", "Билдер"] },
-  { label: "Аниматор", emoji: "🧑‍🎨", aliases: ["🧑‍🎨 Аниматор", "Аниматор"] },
-  { label: "Гфх мейкер", emoji: "🖼️", aliases: ["🖼️ Гфх мейкер", "Гфх мейкер", "ГФХ мейкер"] },
-  { label: "Вфх мейкер", emoji: "🪄", aliases: ["🪄 Вфх мейкер", "Вфх мейкер", "ВФХ мейкер"] },
-  { label: "Модельер", emoji: "🧊", aliases: ["🧊 Модельер", "Модельер"] },
-  { label: "Sound Мейкер", emoji: "🎵", aliases: ["🎵 Sound Мейкер", "Sound Мейкер"] }
+  { label: "Скриптер", emoji: "🧑‍💻", aliases: ["Скриптер"] },
+  { label: "Билдер", emoji: "👷", aliases: ["Билдер"] },
+  { label: "Аниматор", emoji: "🧑‍🎨", aliases: ["Аниматор"] },
+  { label: "Гфх мейкер", emoji: "🖼️", aliases: ["Гфх мейкер", "ГФХ мейкер"] },
+  { label: "Вфх мейкер", emoji: "🪄", aliases: ["Вфх мейкер", "ВФХ мейкер"] },
+  { label: "Модельер", emoji: "🧊", aliases: ["Модельер"] },
+  { label: "Sound Мейкер", emoji: "🎵", aliases: ["Sound Мейкер"] }
 ];
 
 function normalizeName(value) {
   return value.trim().toLowerCase();
+}
+
+function normalizeRoleMatchValue(value) {
+  return normalizeName(value)
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function readArtifacts(guildId) {
@@ -115,12 +122,19 @@ function isAssignableRole(guild, role) {
 }
 
 function findBestRoleMatch(guild, aliases) {
-  const normalizedAliases = aliases.map(normalizeName);
+  const normalizedAliases = aliases.map(normalizeRoleMatchValue);
 
   return guild.roles.cache
     .filter((role) => !role.managed && role.id !== guild.roles.everyone.id)
     .sort((left, right) => right.position - left.position)
-    .find((role) => normalizedAliases.includes(normalizeName(role.name))) || null;
+    .find((role) => {
+      const normalizedRoleName = normalizeRoleMatchValue(role.name);
+      return normalizedAliases.some((alias) =>
+        normalizedRoleName === alias
+        || normalizedRoleName.includes(alias)
+        || alias.includes(normalizedRoleName)
+      );
+    }) || null;
 }
 
 function collectRolePickerOptions(guild) {
