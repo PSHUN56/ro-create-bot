@@ -10,13 +10,6 @@ const { loadState, withState } = require("./storage");
 
 const ROLE_PICKER_CUSTOM_ID = "roles:select";
 
-const STAFF_ROLE_NAMES = [
-  ROLE_NAMES.founder,
-  ROLE_NAMES.admin,
-  ROLE_NAMES.taskReviewer,
-  ROLE_NAMES.adReviewer
-];
-
 const ROLE_PICKER_CHANNEL_ALIASES = [
   "выбор-роли",
   "выбор роли",
@@ -31,9 +24,9 @@ const ROLE_PICKER_GROUPS = [
   { label: "Скриптер", emoji: "🧑‍💻", aliases: ["🧑‍💻 Скриптер", "Скриптер"] },
   { label: "Билдер", emoji: "👷", aliases: ["👷 Билдер", "Билдер"] },
   { label: "Аниматор", emoji: "🧑‍🎨", aliases: ["🧑‍🎨 Аниматор", "Аниматор"] },
-  { label: "Гфх мейкер", emoji: "🧑‍🎨", aliases: ["🧑‍🎨 Гфх мейкер", "Гфх мейкер", "ГФХ мейкер"] },
+  { label: "Гфх мейкер", emoji: "🖼️", aliases: ["🖼️ Гфх мейкер", "Гфх мейкер", "ГФХ мейкер"] },
   { label: "Вфх мейкер", emoji: "🪄", aliases: ["🪄 Вфх мейкер", "Вфх мейкер", "ВФХ мейкер"] },
-  { label: "Модельер", emoji: "🧑‍🎨", aliases: ["🧑‍🎨 Модельер", "Модельер"] },
+  { label: "Модельер", emoji: "🧊", aliases: ["🧊 Модельер", "Модельер"] },
   { label: "Sound Мейкер", emoji: "🎵", aliases: ["🎵 Sound Мейкер", "Sound Мейкер"] }
 ];
 
@@ -123,13 +116,11 @@ function isAssignableRole(guild, role) {
 
 function findBestRoleMatch(guild, aliases) {
   const normalizedAliases = aliases.map(normalizeName);
+
   return guild.roles.cache
     .filter((role) => isAssignableRole(guild, role))
     .sort((left, right) => right.position - left.position)
-    .find((role) => {
-      const normalizedRoleName = normalizeName(role.name);
-      return normalizedAliases.includes(normalizedRoleName);
-    }) || null;
+    .find((role) => normalizedAliases.includes(normalizeName(role.name))) || null;
 }
 
 function collectRolePickerOptions(guild) {
@@ -170,9 +161,17 @@ async function ensureRolePickerMessage(channel, options) {
       [
         "Выбери направления, в которых ты работаешь.",
         "",
-        "Можно выбрать несколько ролей сразу. Если снять выбор, бот уберёт эту роль."
+        "Можно выбрать несколько ролей сразу.",
+        "Если снять выбор, бот уберёт эту роль.",
+        "",
+        "Это помогает участникам быстрее понимать, чем ты занимаешься в разработке."
       ].join("\n")
-    );
+    )
+    .addFields({
+      name: "Доступные роли",
+      value: options.map((option) => `${option.emoji} ${option.label}`).join("\n")
+    })
+    .setFooter({ text: "Роли обновляются через это меню" });
 
   const menu = new StringSelectMenuBuilder()
     .setCustomId(ROLE_PICKER_CUSTOM_ID)
@@ -190,7 +189,7 @@ async function setupServer(guild) {
   await guild.roles.fetch();
 
   const instructions = [
-    "Готово. Я ничего не менял в структуре сервера, а только обновил выбор ролей."
+    "Готово. Я ничего не менял в структуре сервера, а только обновил сообщение выбора ролей."
   ];
 
   const roleSelectionChannel = findRoleSelectionChannel(guild);
