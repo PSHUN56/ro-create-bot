@@ -28,13 +28,13 @@ const ROLE_PICKER_CHANNEL_ALIASES = [
 ];
 
 const ROLE_PICKER_GROUPS = [
-  { label: "Скриптер", emoji: "🧠", keywords: ["скриптер", "scripter", "script", "lua"] },
-  { label: "Билдер", emoji: "🧱", keywords: ["билдер", "builder", "build"] },
-  { label: "FX", emoji: "✨", keywords: ["fx", "vfx", "эффект", "вфх"] },
-  { label: "Мейкер", emoji: "🛠️", keywords: ["мейкер", "maker"] },
-  { label: "Моделлер", emoji: "🧊", keywords: ["модел", "modeler", "modeller", "3d"] },
-  { label: "Музыка", emoji: "🎵", keywords: ["музык", "music", "sound", "audio", "composer"] },
-  { label: "Аниматор", emoji: "🎬", keywords: ["аним", "animator", "animation"] }
+  { label: "Скриптер", emoji: "🧑‍💻", aliases: ["🧑‍💻 Скриптер", "Скриптер"] },
+  { label: "Билдер", emoji: "👷", aliases: ["👷 Билдер", "Билдер"] },
+  { label: "Аниматор", emoji: "🧑‍🎨", aliases: ["🧑‍🎨 Аниматор", "Аниматор"] },
+  { label: "Гфх мейкер", emoji: "🧑‍🎨", aliases: ["🧑‍🎨 Гфх мейкер", "Гфх мейкер", "ГФХ мейкер"] },
+  { label: "Вфх мейкер", emoji: "🪄", aliases: ["🪄 Вфх мейкер", "Вфх мейкер", "ВФХ мейкер"] },
+  { label: "Модельер", emoji: "🧑‍🎨", aliases: ["🧑‍🎨 Модельер", "Модельер"] },
+  { label: "Sound Мейкер", emoji: "🎵", aliases: ["🎵 Sound Мейкер", "Sound Мейкер"] }
 ];
 
 function normalizeName(value) {
@@ -121,22 +121,21 @@ function isAssignableRole(guild, role) {
   return role.position < highestBotRole.position;
 }
 
-function findBestRoleMatch(guild, keywords) {
-  const normalizedKeywords = keywords.map(normalizeName);
-
+function findBestRoleMatch(guild, aliases) {
+  const normalizedAliases = aliases.map(normalizeName);
   return guild.roles.cache
     .filter((role) => isAssignableRole(guild, role))
     .sort((left, right) => right.position - left.position)
     .find((role) => {
       const normalizedRoleName = normalizeName(role.name);
-      return normalizedKeywords.some((keyword) => normalizedRoleName.includes(keyword));
+      return normalizedAliases.includes(normalizedRoleName);
     }) || null;
 }
 
 function collectRolePickerOptions(guild) {
   return ROLE_PICKER_GROUPS
     .map((group) => {
-      const role = findBestRoleMatch(guild, group.keywords);
+      const role = findBestRoleMatch(guild, group.aliases);
       if (!role) {
         return null;
       }
