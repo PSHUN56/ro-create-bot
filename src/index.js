@@ -17,7 +17,13 @@ const {
   TextInputStyle
 } = require("discord.js");
 const { withState, ensureUser, loadState } = require("./storage");
-const { setupServer, cleanupManagedArtifacts, hasTaskReviewerRole, hasAdReviewerRole } = require("./setupServer");
+const {
+  setupServer,
+  cleanupManagedArtifacts,
+  hasTaskReviewerRole,
+  hasAdReviewerRole,
+  ROLE_PICKER_CUSTOM_ID
+} = require("./setupServer");
 const { ROLE_NAMES, managedTemplates } = require("./config/serverTemplate");
 
 const token = process.env.DISCORD_TOKEN;
@@ -634,6 +640,51 @@ client.on("interactionCreate", async (interaction) => {
 
         return interaction.reply({
           content: `${target} получил \`${amount}\` монет. Новый баланс: \`${userState.coins}\`.`,
+          flags: 64
+        });
+      }
+    }
+
+    if (interaction.isStringSelectMenu()) {
+      if (interaction.customId === ROLE_PICKER_CUSTOM_ID) {
+        const member = interaction.member;
+        const selectedRoleIds = new Set(interaction.values);
+        const allRoleIds = new Set(
+          (interaction.component.options || [])
+            .map((option) => option.value)
+            .filter(Boolean)
+        );
+
+        const rolesToRemove = member.roles.cache.filter((role) =>
+          allRoleIds.has(role.id) && !selectedRoleIds.has(role.id)
+        );
+
+        const rolesToAdd = [...selectedRoleIds]
+          .map((roleId) => interaction.guild.roles.cache.get(roleId))
+          .filter((role) =>
+            role
+            && !role.managed
+            && role.position < interaction.guild.members.me.roles.highest.position
+            && !member.roles.cache.has(role.id)
+          );
+
+        if (rolesToAdd.length > 0) {
+          await member.roles.add(rolesToAdd, "Ro Create role picker");
+        }
+
+        if (rolesToRemove.size > 0) {
+          await member.roles.remove(rolesToRemove, "Ro Create role picker");
+        }
+
+        const selectedNames = [...selectedRoleIds]
+          .map((roleId) => interaction.guild.roles.cache.get(roleId))
+          .filter(Boolean)
+          .map((role) => role.name);
+
+        return interaction.reply({
+          content: selectedNames.length > 0
+            ? `Готово. Твои роли обновлены: ${selectedNames.join(", ")}.`
+            : "Готово. Я убрал выбранные роли разработки.",
           flags: 64
         });
       }

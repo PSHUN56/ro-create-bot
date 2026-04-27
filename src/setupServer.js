@@ -1,21 +1,14 @@
 const {
   ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
   ChannelType,
   EmbedBuilder,
-  PermissionFlagsBits
+  PermissionFlagsBits,
+  StringSelectMenuBuilder
 } = require("discord.js");
-const {
-  ROLE_NAMES,
-  roleTemplates,
-  managedCategories,
-  managedTemplates,
-  legacyCategoryNames,
-  legacyChannelNames,
-  buildOverwrites
-} = require("./config/serverTemplate");
+const { ROLE_NAMES, legacyCategoryNames, legacyChannelNames } = require("./config/serverTemplate");
 const { loadState, withState } = require("./storage");
+
+const ROLE_PICKER_CUSTOM_ID = "roles:select";
 
 const STAFF_ROLE_NAMES = [
   ROLE_NAMES.founder,
@@ -24,94 +17,38 @@ const STAFF_ROLE_NAMES = [
   ROLE_NAMES.adReviewer
 ];
 
+const ROLE_PICKER_CHANNEL_ALIASES = [
+  "выбор-роли",
+  "выбор роли",
+  "выбор_роли",
+  "роли",
+  "role-select",
+  "role selection",
+  "roles"
+];
+
+const ROLE_PICKER_GROUPS = [
+  { label: "Скриптер", emoji: "🧠", keywords: ["скриптер", "scripter", "script", "lua"] },
+  { label: "Билдер", emoji: "🧱", keywords: ["билдер", "builder", "build"] },
+  { label: "FX", emoji: "✨", keywords: ["fx", "vfx", "эффект", "вфх"] },
+  { label: "Мейкер", emoji: "🛠️", keywords: ["мейкер", "maker"] },
+  { label: "Моделлер", emoji: "🧊", keywords: ["модел", "modeler", "modeller", "3d"] },
+  { label: "Музыка", emoji: "🎵", keywords: ["музык", "music", "sound", "audio", "composer"] },
+  { label: "Аниматор", emoji: "🎬", keywords: ["аним", "animator", "animation"] }
+];
+
 function normalizeName(value) {
   return value.trim().toLowerCase();
-}
-
-function aliasesFor(template) {
-  return [template.name, ...(template.aliases || [])].map(normalizeName);
-}
-
-function getArtifacts(state, guildId) {
-  if (!state.managedArtifacts[guildId]) {
-    state.managedArtifacts[guildId] = {
-      categories: {},
-      channels: {}
-    };
-  }
-
-  return state.managedArtifacts[guildId];
 }
 
 function readArtifacts(guildId) {
   return loadState().managedArtifacts[guildId] || { categories: {}, channels: {} };
 }
 
-function saveCategoryArtifact(guildId, key, id) {
-  withState((state) => {
-    const artifacts = getArtifacts(state, guildId);
-    artifacts.categories[key] = id;
-  });
-}
-
-function saveChannelArtifact(guildId, key, id) {
-  withState((state) => {
-    const artifacts = getArtifacts(state, guildId);
-    artifacts.channels[key] = id;
-  });
-}
-
 function clearArtifacts(guildId) {
   withState((state) => {
     delete state.managedArtifacts[guildId];
   });
-}
-
-async function ensureRole(guild, template) {
-  const existing = guild.roles.cache.find((role) => role.name === template.name);
-  if (existing) {
-    return existing;
-  }
-
-  return guild.roles.create({
-    name: template.name,
-    color: template.color,
-    reason: "Ro Create setup"
-  });
-}
-
-async function ensureRoleHierarchy(guild, roleMap) {
-  const botMember = guild.members.me;
-  if (!botMember.permissions.has(PermissionFlagsBits.ManageRoles)) {
-    return;
-  }
-
-  let position = Math.max(1, botMember.roles.highest.position - 1);
-  const order = [
-    ROLE_NAMES.verified,
-    ROLE_NAMES.adReviewer,
-    ROLE_NAMES.taskReviewer,
-    ROLE_NAMES.admin,
-    ROLE_NAMES.founder
-  ];
-
-  for (const roleName of order) {
-    const role = roleMap[roleName];
-    if (!role || role.position >= botMember.roles.highest.position) {
-      continue;
-    }
-
-    await role.setPosition(position).catch(() => null);
-    position -= 1;
-  }
-}
-
-async function assignFounderRole(ownerMember, founderRole) {
-  if (!founderRole || ownerMember.roles.cache.has(founderRole.id)) {
-    return;
-  }
-
-  await ownerMember.roles.add(founderRole, "Ro Create setup").catch(() => null);
 }
 
 async function cleanupManagedArtifacts(guild) {
@@ -158,228 +95,121 @@ async function cleanupManagedArtifacts(guild) {
   return removed;
 }
 
-function findTrackedChannel(guild, id, expectedType = null) {
-  if (!id) {
-    return null;
-  }
+function findRoleSelectionChannel(guild) {
+  const aliases = ROLE_PICKER_CHANNEL_ALIASES.map(normalizeName);
 
-  const channel = guild.channels.cache.get(id) || null;
-  if (!channel) {
-    return null;
-  }
+  return guild.channels.cache.find((channel) => {
+    if (channel.type !== ChannelType.GuildText) {
+      return false;
+    }
 
-  if (expectedType && channel.type !== expectedType) {
-    return null;
-  }
-
-  return channel;
+    const normalizedName = normalizeName(channel.name);
+    return aliases.some((alias) => normalizedName === alias || normalizedName.includes(alias));
+  }) || null;
 }
 
-function findExistingCategory(guild, template, artifacts) {
-  const tracked = findTrackedChannel(guild, artifacts.categories?.[template.key], ChannelType.GuildCategory);
-  if (tracked) {
-    return tracked;
+function isAssignableRole(guild, role) {
+  if (!role || role.managed || role.id === guild.roles.everyone.id) {
+    return false;
   }
 
-  const aliases = new Set(aliasesFor(template));
-  return guild.channels.cache.find((channel) =>
-    channel.type === ChannelType.GuildCategory && aliases.has(normalizeName(channel.name))
-  ) || null;
-}
-
-function findExistingChannel(guild, template, artifacts) {
-  const tracked = findTrackedChannel(guild, artifacts.channels?.[template.key], template.type);
-  if (tracked) {
-    return tracked;
+  const highestBotRole = guild.members.me?.roles?.highest;
+  if (!highestBotRole) {
+    return false;
   }
 
-  const aliases = new Set(aliasesFor(template));
-  return guild.channels.cache.find((channel) =>
-    channel.type === template.type && aliases.has(normalizeName(channel.name))
-  ) || null;
+  return role.position < highestBotRole.position;
 }
 
-async function findExistingPanelMessage(channel, customId) {
-  const messages = await channel.messages.fetch({ limit: 15 }).catch(() => null);
-  if (!messages) {
-    return null;
+function findBestRoleMatch(guild, keywords) {
+  const normalizedKeywords = keywords.map(normalizeName);
+
+  return guild.roles.cache
+    .filter((role) => isAssignableRole(guild, role))
+    .sort((left, right) => right.position - left.position)
+    .find((role) => {
+      const normalizedRoleName = normalizeName(role.name);
+      return normalizedKeywords.some((keyword) => normalizedRoleName.includes(keyword));
+    }) || null;
+}
+
+function collectRolePickerOptions(guild) {
+  return ROLE_PICKER_GROUPS
+    .map((group) => {
+      const role = findBestRoleMatch(guild, group.keywords);
+      if (!role) {
+        return null;
+      }
+
+      return {
+        label: group.label,
+        value: role.id,
+        description: `Выдаёт роль ${role.name}`.slice(0, 100),
+        emoji: group.emoji
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 25);
+}
+
+async function ensureRolePickerMessage(channel, options) {
+  const messages = await channel.messages.fetch({ limit: 30 }).catch(() => null);
+  if (messages) {
+    for (const message of messages.values()) {
+      if (message.author.id !== channel.client.user.id) {
+        continue;
+      }
+
+      await message.delete().catch(() => null);
+    }
   }
 
-  return messages.find((message) =>
-    message.author.id === channel.client.user.id
-    && message.components.some((row) =>
-      row.components.some((component) => component.customId === customId)
-    )
-  ) || null;
-}
-
-async function ensureVerificationMessage(channel, verifiedRole) {
   const embed = new EmbedBuilder()
-    .setColor(0x22c55e)
-    .setTitle("Ro Create | Верификация")
+    .setColor(0xa855f7)
+    .setTitle("Ro Create | Выбор ролей")
     .setDescription(
       [
-        "Добро пожаловать в Ro Create.",
+        "Выбери направления, в которых ты работаешь.",
         "",
-        "Нажми кнопку ниже, чтобы получить доступ к основным разделам сервера.",
-        verifiedRole ? `После подтверждения бот выдаст роль <@&${verifiedRole.id}>.` : ""
-      ].filter(Boolean).join("\n")
-    );
-
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("verify:grant")
-      .setLabel("Пройти верификацию")
-      .setStyle(ButtonStyle.Success)
-  );
-
-  const existing = await findExistingPanelMessage(channel, "verify:grant");
-  if (existing) {
-    await existing.edit({ embeds: [embed], components: [row] });
-    return existing;
-  }
-
-  return channel.send({ embeds: [embed], components: [row] });
-}
-
-async function ensureTaskPanel(channel) {
-  const embed = new EmbedBuilder()
-    .setColor(0x3b82f6)
-    .setTitle("Ro Create | Сдача задания")
-    .setDescription(
-      [
-        "В этот канал писать нельзя.",
-        "",
-        "Нажми кнопку ниже.",
-        "Бот попросит комментарий, потом откроет приватную ветку.",
-        "В ветке нужно будет приложить фото и видео, а потом отправить работу на проверку."
+        "Можно выбрать несколько ролей сразу. Если снять выбор, бот уберёт эту роль."
       ].join("\n")
     );
 
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId("task:start")
-      .setLabel("Отправить задание")
-      .setStyle(ButtonStyle.Primary)
-  );
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(ROLE_PICKER_CUSTOM_ID)
+    .setPlaceholder("Выбери роли разработки")
+    .setMinValues(0)
+    .setMaxValues(options.length)
+    .addOptions(options);
 
-  const existing = await findExistingPanelMessage(channel, "task:start");
-  if (existing) {
-    await existing.edit({ embeds: [embed], components: [row] });
-    return existing;
-  }
-
+  const row = new ActionRowBuilder().addComponents(menu);
   return channel.send({ embeds: [embed], components: [row] });
 }
 
-async function syncExistingCategory(category, overwriteOptions) {
-  await category.permissionOverwrites.set(
-    buildOverwrites({
-      ...overwriteOptions,
-      visibility: "staff",
-      memberCanSend: false
-    })
-  ).catch(() => null);
-}
-
-async function syncExistingChannel(channel, template, overwriteOptions) {
-  await channel.permissionOverwrites.set(
-    buildOverwrites({
-      ...overwriteOptions,
-      visibility: template.visibility,
-      memberCanSend: template.memberCanSend,
-      allowThreadMessages: template.allowThreadMessages,
-      allowPrivateThreads: template.allowPrivateThreads
-    })
-  ).catch(() => null);
-}
-
-async function setupServer(guild, ownerMember) {
+async function setupServer(guild) {
   await guild.channels.fetch();
   await guild.roles.fetch();
 
-  const roleMap = {};
-  for (const template of roleTemplates) {
-    roleMap[template.name] = await ensureRole(guild, template);
-  }
-
-  await ensureRoleHierarchy(guild, roleMap);
-  await assignFounderRole(ownerMember, roleMap[ROLE_NAMES.founder]);
-
-  const overwriteOptions = {
-    guild,
-    ownerId: ownerMember.id,
-    verifiedRoleId: roleMap[ROLE_NAMES.verified]?.id,
-    staffRoleIds: Object.values(roleMap)
-      .filter((role) => STAFF_ROLE_NAMES.includes(role.name))
-      .map((role) => role.id)
-  };
-
-  const artifacts = readArtifacts(guild.id);
-  const categoryMap = {};
-  const channelMap = {};
-  const missing = [];
-
-  for (const template of managedCategories) {
-    const category = findExistingCategory(guild, template, artifacts);
-    if (category) {
-      await syncExistingCategory(category, overwriteOptions);
-      categoryMap[template.key] = category;
-      saveCategoryArtifact(guild.id, template.key, category.id);
-    } else {
-      missing.push(`категория ${template.name}`);
-    }
-  }
-
-  for (const template of managedTemplates) {
-    const channel = findExistingChannel(guild, template, artifacts);
-    if (channel) {
-      await syncExistingChannel(channel, template, overwriteOptions);
-      channelMap[template.key] = { channel, removedDuplicates: [] };
-      saveChannelArtifact(guild.id, template.key, channel.id);
-    } else {
-      missing.push(`канал ${template.name}`);
-    }
-  }
-
-  if (channelMap.verification?.channel) {
-    await ensureVerificationMessage(channelMap.verification.channel, roleMap[ROLE_NAMES.verified]);
-  }
-
-  if (channelMap.taskSubmit?.channel) {
-    await ensureTaskPanel(channelMap.taskSubmit.channel);
-  }
-
   const instructions = [
-    "Готово. Я подключил бота к уже настроенной структуре сервера, обновил права и не трогал расположение каналов."
+    "Готово. Я ничего не менял в структуре сервера, а только обновил выбор ролей."
   ];
 
-  if (channelMap.news?.channel && channelMap.verification?.channel) {
-    instructions.push(`Стартовые каналы: <#${channelMap.news.channel.id}> и <#${channelMap.verification.channel.id}>.`);
+  const roleSelectionChannel = findRoleSelectionChannel(guild);
+  if (!roleSelectionChannel) {
+    instructions.push("Не нашёл канал выбора ролей. Назови его, например, `выбор-роли` или `роли`.");
+    return { instructions };
   }
 
-  if (channelMap.tasks?.channel && channelMap.taskSubmit?.channel) {
-    instructions.push(`Задания: <#${channelMap.tasks.channel.id}> и <#${channelMap.taskSubmit.channel.id}>.`);
+  const options = collectRolePickerOptions(guild);
+  if (options.length === 0) {
+    instructions.push("Не нашёл подходящих ролей разработчиков. Проверь названия ролей на сервере.");
+    return { instructions };
   }
 
-  if (channelMap.ads?.channel) {
-    instructions.push(`Объявления: <#${channelMap.ads.channel.id}>.`);
-  }
-
-  if (channelMap.taskReview?.channel || channelMap.adReview?.channel) {
-    instructions.push(
-      `Staff-каналы: ${[channelMap.taskReview?.channel, channelMap.adReview?.channel]
-        .filter(Boolean)
-        .map((channel) => `<#${channel.id}>`)
-        .join(" и ")}.`
-    );
-  }
-
-  if (missing.length > 0) {
-    instructions.push(`Не нашёл и не стал создавать: ${missing.join(", ")}.`);
-  }
-
-  return { roleMap, channelMap, instructions };
+  await ensureRolePickerMessage(roleSelectionChannel, options);
+  instructions.push(`Обновил сообщение в канале <#${roleSelectionChannel.id}>.`);
+  instructions.push(`Нашёл роли: ${options.map((option) => option.label).join(", ")}.`);
+  return { instructions };
 }
 
 function hasTaskReviewerRole(member) {
@@ -400,5 +230,6 @@ module.exports = {
   setupServer,
   cleanupManagedArtifacts,
   hasTaskReviewerRole,
-  hasAdReviewerRole
+  hasAdReviewerRole,
+  ROLE_PICKER_CUSTOM_ID
 };
