@@ -659,14 +659,19 @@ client.on("interactionCreate", async (interaction) => {
           allRoleIds.has(role.id) && !selectedRoleIds.has(role.id)
         );
 
-        const rolesToAdd = [...selectedRoleIds]
+        const desiredRoles = [...selectedRoleIds]
           .map((roleId) => interaction.guild.roles.cache.get(roleId))
-          .filter((role) =>
-            role
-            && !role.managed
-            && role.position < interaction.guild.members.me.roles.highest.position
-            && !member.roles.cache.has(role.id)
-          );
+          .filter(Boolean);
+
+        const unavailableRoles = desiredRoles.filter((role) =>
+          role.managed || role.position >= interaction.guild.members.me.roles.highest.position
+        );
+
+        const rolesToAdd = desiredRoles.filter((role) =>
+          !role.managed
+          && role.position < interaction.guild.members.me.roles.highest.position
+          && !member.roles.cache.has(role.id)
+        );
 
         if (rolesToAdd.length > 0) {
           await member.roles.add(rolesToAdd, "Ro Create role picker");
@@ -676,15 +681,24 @@ client.on("interactionCreate", async (interaction) => {
           await member.roles.remove(rolesToRemove, "Ro Create role picker");
         }
 
-        const selectedNames = [...selectedRoleIds]
-          .map((roleId) => interaction.guild.roles.cache.get(roleId))
-          .filter(Boolean)
+        const refreshedMember = await interaction.guild.members.fetch(interaction.user.id);
+        const appliedNames = desiredRoles
+          .filter((role) => refreshedMember.roles.cache.has(role.id))
           .map((role) => role.name);
 
+        const unavailableNames = unavailableRoles.map((role) => role.name);
+
         return interaction.reply({
-          content: selectedNames.length > 0
-            ? `Готово. Твои роли обновлены: ${selectedNames.join(", ")}.`
-            : "Готово. Я убрал выбранные роли разработки.",
+          content: unavailableNames.length > 0
+            ? [
+              appliedNames.length > 0
+                ? `Готово. Выдал роли: ${appliedNames.join(", ")}.`
+                : "Часть ролей бот не смог выдать.",
+              `Не удалось выдать: ${unavailableNames.join(", ")}. Подними роль бота выше этих ролей в настройках сервера.`
+            ].join("\n")
+            : appliedNames.length > 0
+              ? `Готово. Твои роли обновлены: ${appliedNames.join(", ")}.`
+              : "Готово. Я убрал выбранные роли разработки.",
           flags: 64
         });
       }
